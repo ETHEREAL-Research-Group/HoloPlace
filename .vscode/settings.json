@@ -1,0 +1,20 @@
+{
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportUnknownMemberType": "none",
+    "reportUnknownParameterType": "none",
+    "reportMissingParameterType": "none",
+    "reportUnknownVariableType": "none",
+    "reportUnknownArgumentType": "none",
+    "reportUnknownLambdaType": "none",
+    "reportOptionalOperand": "none",
+    "reportOptionalSubscript": "none",
+    "reportGeneralTypeIssues": "none",
+    "reportMissingTypeStubs": "none",
+    "reportIncompatibleMethodOverride": "none"
+  },
+  "python.analysis.diagnosticMode": "openFilesOnly",
+  "python.defaultInterpreterPath": "D:/.virtualenvs/imitation/python.exe",
+  "python.formatting.autopep8Args": [
+    "--indent-size=2"
+  ]
+}

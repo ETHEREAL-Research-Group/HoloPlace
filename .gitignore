@@ -1,0 +1,6 @@
+data
+baseline
+checkpoint
+*.h5
+*.onnx
+*.npz
