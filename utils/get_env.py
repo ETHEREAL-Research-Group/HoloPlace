@@ -9,6 +9,8 @@ logger = logging.getLogger()
 
 
 class RPMEnv(gym.Env):
+  metadata = {'render_modes': ['human']}
+  reward_range = (-float(1), float(1))
   def __init__(self, logger, rng=None):
     super().__init__()
     self.observation_space = spaces.Box(-1, 1, shape=(7,), dtype=np.float32)
@@ -44,9 +46,9 @@ class RPMEnv(gym.Env):
     act_matrix = self.get_matrix(action)
     try:
       inversed = np.linalg.inv(act_matrix)
-      self._info = np.matmul(self._info, inversed)
+      self._info = np.matmul(inversed, self._info)
       self._state = self.destruct_matrix(self._info)
-      return self._state, 0.0, self.counter > 10, {}
+      return self._state, 0.0, False, {}
     except:
       self.logger.error('singular matrix')
       return self._state, 0.0, True, {}

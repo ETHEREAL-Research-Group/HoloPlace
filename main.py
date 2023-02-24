@@ -15,7 +15,7 @@ if __name__ == "__main__":
   logger = logging.getLogger()
   data = read_data()
   rng = np.random.default_rng(0)
-  venv = get_venv(2, rng, logger)
+  venv = get_venv(1, rng, logger)
 
   try:
     learner = PPO(env=venv, policy=MlpPolicy)
@@ -25,13 +25,13 @@ if __name__ == "__main__":
     )
     gail_trainer = GAIL(
         demonstrations=data,
-        demo_batch_size=50,
+        demo_batch_size=64,
         venv=venv,
         gen_algo=learner,
         reward_net=reward_net
     )
-    gail_trainer.train(gail_trainer.gen_train_timesteps * 500)
-    export_model(gail_trainer.policy, venv.observation_space)
+    gail_trainer.train(gail_trainer.gen_train_timesteps * 20)
+    export_model(gail_trainer.policy, venv.observation_space, 'test3.onnx')
   finally:
     logger.info('closing venv...')
     venv.close()
