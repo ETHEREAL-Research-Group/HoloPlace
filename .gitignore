@@ -4,3 +4,5 @@ checkpoint
 *.h5
 *.onnx
 *.npz
+**/__pycache__
+*.log

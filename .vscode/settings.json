@@ -13,8 +13,8 @@
     "reportIncompatibleMethodOverride": "none"
   },
   "python.analysis.diagnosticMode": "openFilesOnly",
-  "python.defaultInterpreterPath": "D:/.virtualenvs/imitation/python.exe",
   "python.formatting.autopep8Args": [
     "--indent-size=2"
-  ]
+  ],
+  "python.terminal.activateEnvironment": false
 }
