@@ -1,12 +1,20 @@
 import pandas as pd
 from ast import literal_eval
 import pytz
-from imitation.data.types import Trajectory, TransitionsMinimal
+from imitation.data.types import Trajectory#, TransitionsMinimal
 import numpy as np
 
 
-def read_data(path='data/obs_acs.csv', torch_campatible=False):
+def read_data(path='data/obs_acs.csv', torch_campatible=False, event_path='data/events.csv'):
   data = pd.read_csv(path)
+
+  events = pd.read_csv(event_path)
+  events['datetime'] = pd.to_datetime(
+      events['timestamp'], unit='ms', utc=True).dt.tz_convert(pytz.timezone('US/Mountain'))
+  last_timestamps = []
+  for i in events[events['event'] == 'target_lost'].index:
+    last_timestamps.append(events.iloc[i - 1].datetime)
+
   data['datetime'] = pd.to_datetime(
       data['timestamp'], unit='ms', utc=True).dt.tz_convert(pytz.timezone('US/Mountain'))
   data.set_index(['datetime'], inplace=True)
@@ -25,18 +33,25 @@ def read_data(path='data/obs_acs.csv', torch_campatible=False):
 
   prev_idx = dataset.index[0]
   batches = []
-  torch_batches = []
-  for i in dataset[dataset['act_pos_x'].isna()].index:
+  torch_batches = None
+  for idx, i in enumerate(dataset[dataset['act_pos_x'].isna()].index):
     if len(batches) == 0:
-      mask = (dataset.index >= prev_idx) & (dataset.index <= i)
+      mask = (dataset.index >= prev_idx) & (dataset.index <= i) & (dataset.index <= last_timestamps[idx])
     else:
-      mask = (dataset.index > prev_idx) & (dataset.index <= i)
+      mask = (dataset.index > prev_idx) & (dataset.index <= i) & (dataset.index <= last_timestamps[idx])
     prev_idx = i
-    obs = dataset[mask].values[:, :7].astype(np.float32)
-    acs = dataset[mask].values[:, 7:].astype(np.float32)[:-1, :]
-    batches.append(Trajectory(obs, acs, None, False))
-    torch_batches.append(TransitionsMinimal(
-        obs[:-1, :], acs, np.zeros(shape=(acs.shape[0],))))
+    temp = dataset[mask].copy()#.resample('0.1S').mean().fillna(method='pad')
+    obs = temp.values[:, :7].astype(np.float32)
+    acs = temp.values[:, 7:].astype(np.float32)
+    batches.append(Trajectory(obs, acs[:-1, :], None, False))
+    if torch_batches is None:
+      torch_batches = {'obs': obs, 'acs': acs}
+    else:
+      torch_batches['obs'] = np.append(torch_batches['obs'], obs, axis=0)
+      torch_batches['acs'] = np.append(torch_batches['acs'], acs, axis=0)
+    # torch_batches.append(TransitionsMinimal(
+    #     obs[:-1, :], acs, np.zeros(shape=(acs.shape[0],))))
+
   if not torch_campatible:
     return batches
   else:
@@ -44,4 +59,4 @@ def read_data(path='data/obs_acs.csv', torch_campatible=False):
 
 
 if __name__ == '__main__':
-  print(read_data('data/obs_acs.csv'))
+  print(read_data(torch_campatible=True))
