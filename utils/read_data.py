@@ -3,6 +3,8 @@ from ast import literal_eval
 import pytz
 from imitation.data.types import Trajectory#, TransitionsMinimal
 import numpy as np
+from random import shuffle
+import torch as th
 
 
 def read_data(path='data/obs_acs.csv', torch_campatible=False, event_path='data/events.csv'):
@@ -33,7 +35,8 @@ def read_data(path='data/obs_acs.csv', torch_campatible=False, event_path='data/
 
   prev_idx = dataset.index[0]
   batches = []
-  torch_batches = None
+  torch_batches = []
+  device = th.device('cuda') if th.cuda.is_available() else th.device('cpu')
   for idx, i in enumerate(dataset[dataset['act_pos_x'].isna()].index):
     if len(batches) == 0:
       mask = (dataset.index >= prev_idx) & (dataset.index <= i) & (dataset.index <= last_timestamps[idx])
@@ -44,18 +47,20 @@ def read_data(path='data/obs_acs.csv', torch_campatible=False, event_path='data/
     obs = temp.values[:, :7].astype(np.float32)
     acs = temp.values[:, 7:].astype(np.float32)
     batches.append(Trajectory(obs, acs[:-1, :], None, False))
-    if torch_batches is None:
-      torch_batches = {'obs': obs, 'acs': acs}
-    else:
-      torch_batches['obs'] = np.append(torch_batches['obs'], obs, axis=0)
-      torch_batches['acs'] = np.append(torch_batches['acs'], acs, axis=0)
+    torch_batches.append((th.Tensor(obs).to(device), th.Tensor(acs).to(device)))
+    # if torch_batches is None:
+    #   torch_batches = {'obs': obs, 'acs': acs}
+    # else:
+    #   torch_batches['obs'] = np.append(torch_batches['obs'], obs, axis=0)
+    #   torch_batches['acs'] = np.append(torch_batches['acs'], acs, axis=0)
     # torch_batches.append(TransitionsMinimal(
     #     obs[:-1, :], acs, np.zeros(shape=(acs.shape[0],))))
 
   if not torch_campatible:
     return batches
   else:
-    return torch_batches
+    shuffle(torch_batches)
+    return torch_batches[0:int(len(torch_batches)*0.8)], torch_batches[int(len(torch_batches)*0.8):]
 
 
 if __name__ == '__main__':

@@ -6,3 +6,4 @@ checkpoint
 *.npz
 **/__pycache__
 *.log
+*.pt
