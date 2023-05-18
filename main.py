@@ -8,8 +8,8 @@ if __name__ == "__main__":
   import numpy as np
   from stable_baselines3 import PPO
   from stable_baselines3.ppo import MlpPolicy
-  # from imitation.algorithms.adversarial.gail import GAIL
-  from imitation.algorithms.bc import BC
+  from imitation.algorithms.adversarial.gail import GAIL
+  # from imitation.algorithms.bc import BC
   from imitation.rewards.reward_nets import BasicRewardNet
   from utils.read_data import read_data
   from utils.get_env import get_venv
@@ -29,26 +29,26 @@ if __name__ == "__main__":
         venv.observation_space,
         venv.action_space,
     )
-    # gail_trainer = GAIL(
-    #     demonstrations=data,
-    #     demo_batch_size=512,
-    #     venv=venv,
-    #     gen_algo=learner,
-    #     reward_net=reward_net
-    # )
-    bc_trainer = BC(
-        observation_space=venv.observation_space,
-        action_space=venv.action_space,
+    gail_trainer = GAIL(
         demonstrations=data,
-        rng=rng,
-        batch_size=512
+        demo_batch_size=512,
+        venv=venv,
+        gen_algo=learner,
+        reward_net=reward_net
     )
+    # bc_trainer = BC(
+    #     observation_space=venv.observation_space,
+    #     action_space=venv.action_space,
+    #     demonstrations=data,
+    #     rng=rng,
+    #     batch_size=512
+    # )
     logger.info('begin training...')
-    # gail_trainer.train(gail_trainer.gen_train_timesteps * 200)
-    bc_trainer.train(n_epochs=1000)
+    gail_trainer.train(gail_trainer.gen_train_timesteps * 200)
+    # bc_trainer.train(n_epochs=20000)
     logger.info('exporting to onnx...')
-    # export_model(gail_trainer.policy, venv.observation_space, 'test3.onnx')
-    export_model(bc_trainer.policy, venv.observation_space, 'bad.onnx')
+    export_model(gail_trainer.policy, venv.observation_space, 'model1.onnx')
+    # export_model(bc_trainer.policy, venv.observation_space, 'model.onnx')
   finally:
     logger.info('closing venv...')
     venv.close()
