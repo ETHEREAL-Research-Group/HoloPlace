@@ -8,3 +8,4 @@ checkpoint
 **/__pycache__
 *.log
 *.pt
+*__pycache__*

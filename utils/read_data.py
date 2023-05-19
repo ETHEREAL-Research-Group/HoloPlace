@@ -1,7 +1,7 @@
 import pandas as pd
 from ast import literal_eval
 import pytz
-from imitation.data.types import Trajectory  # , TransitionsMinimal
+from imitation.data.types import Trajectory
 import numpy as np
 from random import shuffle
 import torch as th
@@ -17,8 +17,8 @@ def flatten_seq(seq):
   return TensorDataset(x, y)
 
 
-def read_data(path='data/data.csv', torch_campatible=False, event_path='data/events.csv', flatten=True):
-  data = pd.read_csv(path)
+def read_data(data_path='data/data.csv', event_path='data/events.csv', custom_flatten=True):
+  data = pd.read_csv(data_path)
 
   events = pd.read_csv(event_path)
   events['datetime'] = pd.to_datetime(
@@ -42,7 +42,7 @@ def read_data(path='data/data.csv', torch_campatible=False, event_path='data/eve
 
   prev_idx = dataset.index[0]
   batches = []
-  torch_batches = []
+  custom_batches = []
   first_time = True
   device = th.device('cuda') if th.cuda.is_available() else th.device('cpu')
   for i in dataset[dataset['act_pos_x'].isna()].index:
@@ -66,23 +66,31 @@ def read_data(path='data/data.csv', torch_campatible=False, event_path='data/eve
     temp = dataset[mask].copy()
     obs = temp.values[:, :7].astype(np.float32)
     acs = temp.values[:, 7:].astype(np.float32)
-    if (not torch_campatible):
-      batches.append(Trajectory(obs, acs[:-1, :], None, False))
-    torch_batches.append(
+    batches.append(Trajectory(obs, acs[:-1, :], None, False))
+    custom_batches.append(
         (th.Tensor(obs).to(device), th.Tensor(acs).to(device)))
 
-  if not torch_campatible:
-    shuffle(batches)
-    return batches[0:int(len(batches)*0.8)]
-  else:
-    shuffle(torch_batches)
-    train = torch_batches[0:int(len(torch_batches)*0.8)]
-    val = torch_batches[int(len(torch_batches)*0.8):]
-    if flatten:
-      train = flatten_seq(train)
-      val = flatten_seq(val)
-    return train, val
+  temp = list(zip(batches, custom_batches))
+  shuffle(temp)
+  batches, custom_batches = zip(*temp)
+
+  custom_train = custom_batches[0:int(len(custom_batches)*0.8)]
+  custom_val = custom_batches[int(len(custom_batches)*0.8):]
+  if custom_flatten:
+    custom_train = flatten_seq(custom_train)
+    custom_val = flatten_seq(custom_val)
+
+  train = batches[0:int(len(batches)*0.8)]
+  val = batches[int(len(batches)*0.8):]
+
+  return (train, val), (custom_train, custom_val)
 
 
 if __name__ == '__main__':
-  train, val = read_data(torch_campatible=True)
+  logging.basicConfig(
+      format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO, datefmt='%m-%d %H:%M:%S')
+  logger = logging.getLogger()
+  data, custom_data = read_data()
+  train, val = data
+  custom_train, custom_val = custom_data
+  

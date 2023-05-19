@@ -1,30 +1,13 @@
-if __name__ == '__main__':
-  import logging
-  logging.basicConfig(
-      format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO, datefmt='%m-%d %H:%M:%S')
-  logger = logging.getLogger()
+import logging
+logger = logging.getLogger()
 
-  from multiprocessing import set_start_method  # , cpu_count
-  set_start_method('spawn')
+
+def custom_trainer(data, output_path, num_epochs=10000):
   import torch as th
-  # from tqdm import tqdm
-
   import torch.nn as nn
   import torch.optim as optim
-  import argparse
-  from utils.read_data import read_data
   from torch.utils.data import DataLoader
-  parser = argparse.ArgumentParser()
-  parser.add_argument('data_path', default='data/data.csv', const=1, nargs='?')
-  parser.add_argument(
-      'event_path', default='data/events.csv', const=1, nargs='?')
-  parser.add_argument(
-      'output_path', default='output/model.onnx', const=1, nargs='?')
-  args = parser.parse_args()
-
-  # Define hyperparameters
   batch_size = 500
-  num_epochs = 20000
   input_size = 7
   output_size = 7
   patience = float('inf')
@@ -52,21 +35,17 @@ if __name__ == '__main__':
   optimizer = optim.Adam(model.parameters(), lr=1e-3, eps=1e-8)
   scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=0.9, step_size=1000)
 
-  # Generate some sample data
-  logger.info('reading the data...')
-  train, val = read_data(
-      path=args.data_path, event_path=args.event_path, torch_campatible=True)
+  train, val = data
+
   train = DataLoader(train, batch_size=batch_size, shuffle=False)
   val = DataLoader(val, batch_size=batch_size, shuffle=False)
-
-  # Train the model
   best_val_loss = float('inf')
   counter = 0
   for epoch in range(num_epochs):
     model.train()
     # pbar = tqdm(desc=f'Training Epoch {epoch}', total=len(train))
     train_loss = None
-    for id_batch, (x_batch, y_batch) in enumerate(train):
+    for _id_batch, (x_batch, y_batch) in enumerate(train):
       optimizer.zero_grad()
       outputs = model(x_batch)
       loss = criterion(outputs, y_batch)
@@ -81,7 +60,7 @@ if __name__ == '__main__':
 
     model.eval()
     val_losses = []
-    for id_batch, (x_batch, y_batch) in enumerate(val):
+    for _id_batch, (x_batch, y_batch) in enumerate(val):
       outputs = model(x_batch)
       val_loss = criterion(y_batch, outputs)
       val_losses.append(val_loss.item())
@@ -95,7 +74,8 @@ if __name__ == '__main__':
     # })
     # pbar.close()
 
-    logger.info(f'Epoch {epoch:>5d}/{num_epochs} {(epoch*100)//num_epochs:>3d}%: Train Loss={train_loss:.4e}, Avg Val Loss={mean_val_loss:.4e}, Learning Rate={optimizer.param_groups[0]["lr"]:.4e}, Best={"True" if mean_val_loss < best_val_loss else "False"}')
+    logger.info(
+        f'Epoch {epoch:>5d}/{num_epochs} {(epoch*100)//num_epochs:>3d}%: Train Loss={train_loss:.4e}, Avg Val Loss={mean_val_loss:.4e}, Learning Rate={optimizer.param_groups[0]["lr"]:.4e}, Best={"True" if mean_val_loss < best_val_loss else "False"}')
 
     if mean_val_loss < best_val_loss:
       best_val_loss = mean_val_loss
@@ -105,7 +85,7 @@ if __name__ == '__main__':
           'model_state_dict': model.state_dict(),
           'optimizer_state_dict': optimizer.state_dict(),
           'val_loss': mean_val_loss,
-      }, f'{args.output_path[:-4]}pt')
+      }, f'{output_path[:-4]}pt')
     elif mean_val_loss > (best_val_loss + min_delta):
       counter += 1
 
@@ -114,23 +94,86 @@ if __name__ == '__main__':
       break
 
     scheduler.step()
-
   try:
     pass
     # logger.info('loading the best model...')
-    # checkpoint = th.load(f'{args.output_path[:-4]}pt')
+    # checkpoint = th.load(f'{output_path[:-4]}pt')
     # model.load_state_dict(checkpoint['model_state_dict'])
   except:
-    logger.error(f'{args.output_path[:-4]}pt could not be found...')
+    logger.error(f'{output_path[:-4]}pt could not be found...')
   dummy_input = th.randn(input_size,)
   logger.info('exporting to onnx...')
   th.onnx.export(
       model,
       th.ones(dummy_input.shape, dtype=th.float32,
               device=device),
-      args.output_path,
+      output_path,
       opset_version=9,
       input_names=['input'],
       output_names=['output']
   )
   logger.info('training finished')
+
+
+def imitation_trainer(data, output_path, method='gail', num_epochs=200):
+  from utils.export_onnx import export_model
+  from utils.get_env import get_venv
+  from imitation.rewards.reward_nets import BasicRewardNet
+  from imitation.algorithms.adversarial.gail import GAIL
+  from imitation.algorithms.bc import BC
+  from stable_baselines3.ppo import MlpPolicy
+  from stable_baselines3 import PPO
+  import numpy as np
+  from multiprocessing import cpu_count
+
+  logger = logging.getLogger()
+  logger.info('reading the data...')
+  rng = np.random.default_rng(0)
+  logger.info(f'creating venv with cpu count {cpu_count()}')
+  venv = get_venv(cpu_count(), rng, logger)
+
+  try:
+    logger.info('creating the learner, policy, and trainer...')
+    learner = PPO(env=venv, policy=MlpPolicy)
+    reward_net = BasicRewardNet(
+        venv.observation_space,
+        venv.action_space,
+    )
+    trainer = None
+    if method == 'gail':
+      trainer = GAIL(
+          demonstrations=data,
+          demo_batch_size=512,
+          venv=venv,
+          gen_algo=learner,
+          reward_net=reward_net
+      )
+      num_epochs = trainer.gen_train_timesteps * num_epochs
+    else:
+      trainer = BC(
+          observation_space=venv.observation_space,
+          action_space=venv.action_space,
+          demonstrations=data,
+          rng=rng,
+          batch_size=512
+      )
+    logger.info('begin training...')
+    trainer.train(num_epochs)
+    logger.info('exporting to onnx...')
+    export_model(trainer.policy, venv.observation_space, output_path)
+    logger.info('training finished')
+  finally:
+    logger.info('closing venv...')
+    venv.close()
+
+
+if __name__ == '__main__':
+  logging.basicConfig(
+      format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO, datefmt='%m-%d %H:%M:%S')
+  logger = logging.getLogger()
+  # Testing custom nn:
+  from read_data import read_data
+  data, custom_data = read_data()
+  custom_trainer(custom_data, 'output/custom_test.onnx', 200)
+  # Testing gail
+  imitation_trainer(data, 'output/gail_test.onnx', 20)
