@@ -30,6 +30,6 @@ if __name__ == "__main__":
     train, _val = data
     imitation_trainer(train, args.output_path, args.method, int(args.epochs))
   elif args.method == 'custom':
-    custom_trainer(custom_data, args.output_path, int(args.epochs)*50)
+    custom_trainer(custom_data, args.output_path, int(args.epochs))
   else:
     raise Exception('method not supported')

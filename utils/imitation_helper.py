@@ -117,7 +117,7 @@ def custom_trainer(data, output_path, num_epochs=10000):
 
 def imitation_trainer(data, output_path, method='gail', num_epochs=200):
   from utils.export_onnx import export_model
-  from utils.get_env import get_venv
+  from utils.get_env import get_venv, observation_space, action_space
   from imitation.rewards.reward_nets import BasicRewardNet
   from imitation.algorithms.adversarial.gail import GAIL
   from imitation.algorithms.bc import BC
@@ -127,20 +127,20 @@ def imitation_trainer(data, output_path, method='gail', num_epochs=200):
   from multiprocessing import cpu_count
 
   logger = logging.getLogger()
-  logger.info('reading the data...')
   rng = np.random.default_rng(0)
   logger.info(f'creating venv with cpu count {cpu_count()}')
-  venv = get_venv(cpu_count(), rng, logger)
+  # venv = get_venv(cpu_count(), rng, logger)
 
   try:
     logger.info('creating the learner, policy, and trainer...')
-    learner = PPO(env=venv, policy=MlpPolicy)
-    reward_net = BasicRewardNet(
-        venv.observation_space,
-        venv.action_space,
-    )
     trainer = None
     if method == 'gail':
+      venv = get_venv(cpu_count(), rng, logger)
+      learner = PPO(env=venv, policy=MlpPolicy)
+      reward_net = BasicRewardNet(
+          venv.observation_space,
+          venv.action_space,
+      )
       trainer = GAIL(
           demonstrations=data,
           demo_batch_size=512,
@@ -149,22 +149,25 @@ def imitation_trainer(data, output_path, method='gail', num_epochs=200):
           reward_net=reward_net
       )
       num_epochs = trainer.gen_train_timesteps * num_epochs
+      logger.info('begin training...')
+      trainer.train(trainer.gen_train_timesteps * num_epochs)
     else:
       trainer = BC(
-          observation_space=venv.observation_space,
-          action_space=venv.action_space,
+          observation_space=observation_space,
+          action_space=action_space,
           demonstrations=data,
           rng=rng,
           batch_size=512
       )
-    logger.info('begin training...')
-    trainer.train(num_epochs)
+      logger.info('begin training...')
+      trainer.train(n_epochs=num_epochs)
     logger.info('exporting to onnx...')
-    export_model(trainer.policy, venv.observation_space, output_path)
+    export_model(trainer.policy, observation_space, output_path)
     logger.info('training finished')
   finally:
-    logger.info('closing venv...')
-    venv.close()
+    if method == 'gail':
+      logger.info('closing venv...')
+      venv.close()  # type: ignore
 
 
 if __name__ == '__main__':

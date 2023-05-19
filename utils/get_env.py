@@ -7,14 +7,18 @@ from stable_baselines3.common.monitor import Monitor
 import logging
 logger = logging.getLogger()
 
+observation_space = spaces.Box(-1, 1, shape=(7,), dtype=np.float32)
+action_space = spaces.Box(-1, 1, shape=(7,), dtype=np.float32)
+
 
 class RPMEnv(gym.Env):
   metadata = {'render_modes': ['human']}
   reward_range = (-float(1), float(1))
+
   def __init__(self, logger, rng=None):
     super().__init__()
-    self.observation_space = spaces.Box(-1, 1, shape=(7,), dtype=np.float32)
-    self.action_space = spaces.Box(-1, 1, shape=(7,), dtype=np.float32)
+    self.observation_space = observation_space
+    self.action_space = action_space
     self.logger = logger
     self.rng = np.random.default_rng(0) if rng is None else rng
 
