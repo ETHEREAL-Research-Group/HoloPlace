@@ -148,7 +148,6 @@ def imitation_trainer(data, output_path, method='gail', num_epochs=200):
           gen_algo=learner,
           reward_net=reward_net
       )
-      num_epochs = trainer.gen_train_timesteps * num_epochs
       logger.info('begin training...')
       trainer.train(trainer.gen_train_timesteps * num_epochs)
     else:
