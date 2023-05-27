@@ -8,7 +8,7 @@ if __name__ == "__main__":
   logger = logging.getLogger()
 
   import argparse
-  from utils.read_data import read_data
+  from utils.read_data import read_data, get_mean
   from utils.imitation_helper import imitation_trainer, custom_trainer
 
   parser = argparse.ArgumentParser()
@@ -18,7 +18,7 @@ if __name__ == "__main__":
   parser.add_argument(
       'output_path', default='output/model.onnx', const=1, nargs='?')
   parser.add_argument(
-      'method', default='gail', const=1, nargs='?')  # options = custom, gail, bc
+      'method', default='gail', const=1, nargs='?')  # options = custom, gail, bc, naive
   parser.add_argument(
       'epochs', default='200', const=1, nargs='?')
   args = parser.parse_args()
@@ -31,5 +31,7 @@ if __name__ == "__main__":
     imitation_trainer(train, args.output_path, args.method, int(args.epochs))
   elif args.method == 'custom':
     custom_trainer(custom_data, args.output_path, int(args.epochs))
+  elif args.method == 'naive':
+    get_mean(args.data_path, args.events_path)
   else:
     raise Exception('method not supported')

@@ -116,10 +116,15 @@ def custom_trainer(data, output_path, num_epochs=10000):
 
 
 def imitation_trainer(data, output_path, method='gail', num_epochs=200):
-  from utils.export_onnx import export_model
-  from utils.get_env import get_venv, observation_space, action_space
+  if __name__ == '__main__':
+    from export_onnx import export_model
+    from get_env import get_venv, observation_space, action_space  
+  else:
+    from utils.export_onnx import export_model
+    from utils.get_env import get_venv, observation_space, action_space
   from imitation.rewards.reward_nets import BasicRewardNet
   from imitation.algorithms.adversarial.gail import GAIL
+  from imitation.algorithms.adversarial.airl import AIRL
   from imitation.algorithms.bc import BC
   from stable_baselines3.ppo import MlpPolicy
   from stable_baselines3 import PPO
@@ -128,25 +133,53 @@ def imitation_trainer(data, output_path, method='gail', num_epochs=200):
 
   logger = logging.getLogger()
   rng = np.random.default_rng(0)
-  logger.info(f'creating venv with cpu count {cpu_count()}')
   # venv = get_venv(cpu_count(), rng, logger)
 
   try:
     logger.info('creating the learner, policy, and trainer...')
     trainer = None
     if method == 'gail':
-      venv = get_venv(cpu_count(), rng, logger)
-      learner = PPO(env=venv, policy=MlpPolicy)
+      logger.info(f'creating venv with cpu count {cpu_count()}')
+      batch_size = 512
+      venv = get_venv(cpu_count(), rng, logger, batch_size)
+      learner = PPO(env=venv, policy=MlpPolicy, ent_coef=0.0, learning_rate=3e-4)
+      # learner = DDPG(env=venv, policy=MlpPolicy)
       reward_net = BasicRewardNet(
           venv.observation_space,
           venv.action_space,
       )
       trainer = GAIL(
           demonstrations=data,
-          demo_batch_size=512,
+          demo_batch_size=batch_size,
           venv=venv,
           gen_algo=learner,
-          reward_net=reward_net
+          reward_net=reward_net,
+          # n_disc_updates_per_round=5,
+          # init_tensorboard=True,
+          # init_tensorboard_graph=True,
+          # log_dir='./output'
+      )
+      logger.info('begin training...')
+      trainer.train(trainer.gen_train_timesteps * num_epochs)
+    elif method == 'airl':
+      logger.info(f'creating venv with cpu count {cpu_count()}')
+      batch_size = 512
+      venv = get_venv(cpu_count(), rng, logger, batch_size)
+      learner = PPO(env=venv, policy=MlpPolicy)
+      reward_net = BasicRewardNet(
+          venv.observation_space,
+          venv.action_space,
+      )
+      trainer = AIRL(
+          demonstrations=data,
+          demo_batch_size=batch_size,
+          venv=venv,
+          gen_algo=learner,
+          reward_net=reward_net,
+          n_disc_updates_per_round=5,
+          init_tensorboard=True,
+          init_tensorboard_graph=True,
+          log_dir='./output'
       )
       logger.info('begin training...')
       trainer.train(trainer.gen_train_timesteps * num_epochs)
@@ -176,6 +209,8 @@ if __name__ == '__main__':
   # Testing custom nn:
   from read_data import read_data
   data, custom_data = read_data()
-  custom_trainer(custom_data, 'output/custom_test.onnx', 200)
+  # custom_trainer(custom_data, 'output/custom_test.onnx', 20)
   # Testing gail
-  imitation_trainer(data, 'output/gail_test.onnx', 20)
+  train, _val = data
+  imitation_trainer(train, 'output/gail_test.onnx', method='gail', num_epochs=100)
+  # imitation_trainer(train, 'output/bc.onnx', method='bc', num_epochs=10000)

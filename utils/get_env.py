@@ -15,12 +15,13 @@ class RPMEnv(gym.Env):
   metadata = {'render_modes': ['human']}
   reward_range = (-float(1), float(1))
 
-  def __init__(self, logger, rng=None):
+  def __init__(self, logger, rng=None, done_threshold=float('inf')):
     super().__init__()
     self.observation_space = observation_space
     self.action_space = action_space
     self.logger = logger
     self.rng = np.random.default_rng(0) if rng is None else rng
+    self.done_threshold = done_threshold
 
   def get_matrix(self, flat: np.array):
     pos = flat[:3]
@@ -52,7 +53,7 @@ class RPMEnv(gym.Env):
       inversed = np.linalg.inv(act_matrix)
       self._info = np.matmul(inversed, self._info)
       self._state = self.destruct_matrix(self._info)
-      return self._state, 0.0, False, {}
+      return self._state, 0.0, self.counter > self.done_threshold, {}
     except:
       self.logger.error('singular matrix')
       return self._state, 0.0, True, {}
@@ -64,13 +65,13 @@ def get_env(logger):
   return Monitor(RPMEnv(logger))
 
 
-def get_venv(subproc=0, rng=None, logger=None) -> SubprocVecEnv:
+def get_venv(subproc=0, rng=None, logger=None, done_threshold=float('inf')) -> SubprocVecEnv:
   if logger is None:
     logger = logging.getLogger()
   if subproc > 0:
-    return SubprocVecEnv([lambda: Monitor(RPMEnv(logger, rng))]*subproc)
+    return SubprocVecEnv([lambda: Monitor(RPMEnv(logger, rng, done_threshold))]*subproc)
   else:
-    return DummyVecEnv([lambda: Monitor(RPMEnv(logger, rng))])
+    return DummyVecEnv([lambda: Monitor(RPMEnv(logger, rng, done_threshold))])
 
 
 if __name__ == '__main__':
