@@ -58,11 +58,10 @@ class RPMEnv(gym.Env):
       self.logger.error('singular matrix')
       return self._state, 0.0, True, {}
 
-
-def get_env(logger):
+def get_env(logger=None, rng=None, done_threshold=float('inf')):
   if logger is None:
     logger = logging.getLogger()
-  return Monitor(RPMEnv(logger))
+  return Monitor(RPMEnv(logger, rng, done_threshold))
 
 
 def get_venv(subproc=0, rng=None, logger=None, done_threshold=float('inf')) -> SubprocVecEnv:

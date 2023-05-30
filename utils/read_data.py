@@ -49,9 +49,8 @@ def get_mean(data_path='data/data.csv', event_path='data/events.csv'):
 
   result = dict(dataset.mean())
 
-
-
-  print(json.dump(result, sys.stderr))  # do not change print to logger.info here!
+  # do not change print to logger.info here!
+  print(json.dump(result, sys.stderr))
   return result
 
 
@@ -110,7 +109,7 @@ def read_data(data_path='data/data.csv', event_path='data/events.csv', custom_fl
 
     batches.append(Trajectory(obs, acs[:-1, :], None, True))
     custom_batches.append(
-        (th.Tensor(obs).to(device), th.Tensor(acs).to(device)))
+        (th.Tensor(obs[:-1]).to(device), th.Tensor(obs[1:]).to(device)))
 
   temp = list(zip(batches, custom_batches))
   shuffle(temp)

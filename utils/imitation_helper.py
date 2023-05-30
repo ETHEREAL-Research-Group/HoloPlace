@@ -118,7 +118,7 @@ def custom_trainer(data, output_path, num_epochs=10000):
 def imitation_trainer(data, output_path, method='gail', num_epochs=200):
   if __name__ == '__main__':
     from export_onnx import export_model
-    from get_env import get_venv, observation_space, action_space  
+    from get_env import get_venv, observation_space, action_space
   else:
     from utils.export_onnx import export_model
     from utils.get_env import get_venv, observation_space, action_space
@@ -141,26 +141,34 @@ def imitation_trainer(data, output_path, method='gail', num_epochs=200):
     if method == 'gail':
       logger.info(f'creating venv with cpu count {cpu_count()}')
       batch_size = 512
-      venv = get_venv(cpu_count(), rng, logger, batch_size)
-      learner = PPO(env=venv, policy=MlpPolicy, ent_coef=0.0, learning_rate=3e-4)
+      venv = get_venv(cpu_count(), rng, logger)
+      learner = PPO(env=venv, policy=MlpPolicy, ent_coef=0.0, learning_rate=3e-4, tensorboard_log='./output')
       # learner = DDPG(env=venv, policy=MlpPolicy)
       reward_net = BasicRewardNet(
           venv.observation_space,
           venv.action_space,
+          hid_sizes=[256, 256],
       )
       trainer = GAIL(
           demonstrations=data,
-          demo_batch_size=batch_size,
+          # demo_batch_size=batch_size,
           venv=venv,
           gen_algo=learner,
           reward_net=reward_net,
-          # n_disc_updates_per_round=5,
+          n_disc_updates_per_round=4,
+          demo_batch_size=1024,
+          gen_replay_buffer_capacity=2048,
           # init_tensorboard=True,
           # init_tensorboard_graph=True,
           # log_dir='./output'
       )
       logger.info('begin training...')
-      trainer.train(trainer.gen_train_timesteps * num_epochs)
+      def save_model(x):
+        if x % 10 != 9:
+          return
+        logger.info('saving onnx interval...')
+        export_model(trainer.policy, observation_space, output_path[:-5] + f'-{x}.onnx')
+      trainer.train(trainer.gen_train_timesteps * num_epochs, lambda x: save_model(x))
     elif method == 'airl':
       logger.info(f'creating venv with cpu count {cpu_count()}')
       batch_size = 512
@@ -206,11 +214,13 @@ if __name__ == '__main__':
   logging.basicConfig(
       format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO, datefmt='%m-%d %H:%M:%S')
   logger = logging.getLogger()
-  # Testing custom nn:
   from read_data import read_data
   data, custom_data = read_data()
-  # custom_trainer(custom_data, 'output/custom_test.onnx', 20)
-  # Testing gail
+  # Testing custom nn:
+  # custom_trainer(custom_data, 'output/custom_test.onnx', 10000)
   train, _val = data
-  imitation_trainer(train, 'output/gail_test.onnx', method='gail', num_epochs=100)
+  # Testing gail
+  imitation_trainer(train, 'output/gail_test.onnx', method='gail', num_epochs=200)
   # imitation_trainer(train, 'output/bc.onnx', method='bc', num_epochs=10000)
+  # imitation_trainer(train, 'output/gail_test.onnx', method='mce_irl', num_epochs=10)
+
