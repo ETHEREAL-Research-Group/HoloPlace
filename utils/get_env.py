@@ -7,7 +7,7 @@ from stable_baselines3.common.monitor import Monitor
 import logging
 logger = logging.getLogger()
 
-observation_space = spaces.Box(-1, 1, shape=(7,), dtype=np.float32)
+observation_space = spaces.Box(-1, 1, shape=(14,), dtype=np.float32)
 action_space = spaces.Box(-1, 1, shape=(7,), dtype=np.float32)
 
 
@@ -41,8 +41,10 @@ class RPMEnv(gym.Env):
     return res
 
   def reset(self):
-    self._state = (self.rng.random(7).astype('f') - 0.5) * 2
-    self._info = self.get_matrix(self._state)
+    self._state = (self.rng.random(
+        self.observation_space.shape[0]).astype('f') - 0.5) * 2
+    self._info1 = self.get_matrix(self._state[:7])
+    self._info2 = self.get_matrix(self._state[7:])
     self.counter = 0
     return self._state
 
@@ -51,12 +53,15 @@ class RPMEnv(gym.Env):
     act_matrix = self.get_matrix(action)
     try:
       inversed = np.linalg.inv(act_matrix)
-      self._info = np.matmul(inversed, self._info)
-      self._state = self.destruct_matrix(self._info)
+      self._info1 = np.matmul(inversed, self._info1)
+      self._info2 = np.matmul(inversed, self._info2)
+      self._state[:7] = self.destruct_matrix(self._info1)
+      self._state[7:] = self.destruct_matrix(self._info2)
       return self._state, 0.0, self.counter > self.done_threshold, {}
     except:
       self.logger.error('singular matrix')
       return self._state, 0.0, True, {}
+
 
 def get_env(logger=None, rng=None, done_threshold=float('inf')):
   if logger is None:
@@ -79,5 +84,6 @@ if __name__ == '__main__':
   logger = logging.getLogger()
   logger.info('testing `get_env()`...')
   logger.info(get_env(logger))
-  logger.info('testing `get_venv(4)`...')
-  logger.info(get_venv(4, logger))
+  from multiprocessing import cpu_count
+  logger.info(f'testing `get_venv({cpu_count()})`...')
+  logger.info(get_venv(cpu_count(), logger))

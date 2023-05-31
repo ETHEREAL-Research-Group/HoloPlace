@@ -7,9 +7,14 @@ def custom_trainer(data, output_path, num_epochs=10000):
   import torch.nn as nn
   import torch.optim as optim
   from torch.utils.data import DataLoader
-  batch_size = 500
-  input_size = 7
-  output_size = 7
+  if __name__ == '__main__':
+    from get_env import observation_space, action_space
+  else:
+    from utils.get_env import observation_space, action_space
+
+  batch_size = 512
+  input_size = observation_space.shape[0]
+  output_size = action_space.shape[0]
   patience = float('inf')
   min_delta = 1e-7
   device = th.device('cuda') if th.cuda.is_available() else th.device('cpu')
@@ -41,6 +46,7 @@ def custom_trainer(data, output_path, num_epochs=10000):
   val = DataLoader(val, batch_size=batch_size, shuffle=False)
   best_val_loss = float('inf')
   counter = 0
+
   for epoch in range(num_epochs):
     model.train()
     # pbar = tqdm(desc=f'Training Epoch {epoch}', total=len(train))
@@ -80,14 +86,27 @@ def custom_trainer(data, output_path, num_epochs=10000):
     if mean_val_loss < best_val_loss:
       best_val_loss = mean_val_loss
       counter = 0
-      th.save({
-          'epoch': epoch,
-          'model_state_dict': model.state_dict(),
-          'optimizer_state_dict': optimizer.state_dict(),
-          'val_loss': mean_val_loss,
-      }, f'{output_path[:-4]}pt')
+      # th.save({
+      #     'epoch': epoch,
+      #     'model_state_dict': model.state_dict(),
+      #     'optimizer_state_dict': optimizer.state_dict(),
+      #     'val_loss': mean_val_loss,
+      # }, f'{output_path[:-4]}pt')
     elif mean_val_loss > (best_val_loss + min_delta):
       counter += 1
+
+    if epoch % 500 == 0:
+      # dummy_input = th.randn(input_size,)
+      logger.info('exporting to onnx interval...')
+      th.onnx.export(
+          model,
+          th.ones([input_size], dtype=th.float32,
+                  device=device),
+          output_path[:-5] + f'-{epoch}.onnx',
+          opset_version=9,
+          input_names=['input'],
+          output_names=['output']
+      )
 
     if counter > patience:
       logger.info('stopping training early...')
@@ -101,11 +120,10 @@ def custom_trainer(data, output_path, num_epochs=10000):
     # model.load_state_dict(checkpoint['model_state_dict'])
   except:
     logger.error(f'{output_path[:-4]}pt could not be found...')
-  dummy_input = th.randn(input_size,)
   logger.info('exporting to onnx...')
   th.onnx.export(
       model,
-      th.ones(dummy_input.shape, dtype=th.float32,
+      th.ones([input_size], dtype=th.float32,
               device=device),
       output_path,
       opset_version=9,
@@ -141,13 +159,13 @@ def imitation_trainer(data, output_path, method='gail', num_epochs=200):
     if method == 'gail':
       logger.info(f'creating venv with cpu count {cpu_count()}')
       batch_size = 512
-      venv = get_venv(cpu_count(), rng, logger)
+      venv = get_venv(cpu_count(), rng, logger, batch_size*256)
       learner = PPO(env=venv, policy=MlpPolicy, ent_coef=0.0, learning_rate=3e-4, tensorboard_log='./output')
       # learner = DDPG(env=venv, policy=MlpPolicy)
       reward_net = BasicRewardNet(
           venv.observation_space,
           venv.action_space,
-          hid_sizes=[256, 256],
+          # hid_sizes=[256, 256],
       )
       trainer = GAIL(
           demonstrations=data,
@@ -155,9 +173,9 @@ def imitation_trainer(data, output_path, method='gail', num_epochs=200):
           venv=venv,
           gen_algo=learner,
           reward_net=reward_net,
-          n_disc_updates_per_round=4,
-          demo_batch_size=1024,
-          gen_replay_buffer_capacity=2048,
+          n_disc_updates_per_round=3,
+          demo_batch_size=batch_size,
+          # gen_replay_buffer_capacity=2048,
           # init_tensorboard=True,
           # init_tensorboard_graph=True,
           # log_dir='./output'
@@ -217,10 +235,10 @@ if __name__ == '__main__':
   from read_data import read_data
   data, custom_data = read_data()
   # Testing custom nn:
-  # custom_trainer(custom_data, 'output/custom_test.onnx', 10000)
+  custom_trainer(custom_data, 'output/custom_test.onnx', 1)
   train, _val = data
   # Testing gail
-  imitation_trainer(train, 'output/gail_test.onnx', method='gail', num_epochs=200)
+  # imitation_trainer(train, 'output/gail_test.onnx', method='gail', num_epochs=500)
   # imitation_trainer(train, 'output/bc.onnx', method='bc', num_epochs=10000)
   # imitation_trainer(train, 'output/gail_test.onnx', method='mce_irl', num_epochs=10)
 
