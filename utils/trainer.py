@@ -1,6 +1,7 @@
 import threading
 import torch as th
 import logging
+import math
 from random import shuffle
 logger = logging.getLogger()
 
@@ -11,7 +12,7 @@ def position_distance(points1, points2):
   positions1 = points1[:, :3]
   positions2 = points2[:, :3]
   res = th.norm(positions1 - positions2, dim=1, p=2)
-  return res.mean()
+  return res.mean().detach()
 
 
 def normalize_quaternions(quaternions):
@@ -20,13 +21,62 @@ def normalize_quaternions(quaternions):
   return quaternions / quaternions_norm
 
 
+def wrap_angle(theta):
+  """
+  Helper method: Wrap the angles of the input tensor to lie between -pi and pi.
+  Odd multiples of pi are wrapped to +pi (as opposed to -pi).
+  """
+  pi_tensor = th.ones_like(theta) * math.pi
+  result = ((theta + pi_tensor) % (2 * pi_tensor)) - pi_tensor
+  result[result.eq(-pi_tensor)] = math.pi
+
+  return result
+
+
 def quaternion_distance(points1, points2):
-  quaternions1 = points1[:, 3:]
-  quaternions2 = points2[:, 3:]
-  dot_product = th.sum(normalize_quaternions(quaternions1)
-                       * normalize_quaternions(quaternions2), dim=1)
-  res = 1 - dot_product**2
-  return res.mean()
+  q1 = normalize_quaternions(points1[:, 3:])
+  q2 = normalize_quaternions(points2[:, 3:])
+  dot_product = th.sum(q1 * q2, dim=1)
+  angle = th.acos(2 * (dot_product ** 2) - 1)
+  return angle.mean().detach()
+  
+  # diff = q_mul(q_conjugate(quaternions1), quaternions2)
+  # Rotation.from_quat(quaternions1).
+  # x = th.abs(wrap_angle(th.Tensor(Rotation.from_quat(
+  #     diff.detach().numpy()).as_euler('xyz', degrees=False))))
+
+  # return x.mean()
+
+
+def q_mul(q1, q2):
+  """
+  Multiply quaternion q1 with q2.
+  Expects two equally-sized tensors of shape [*, 4], where * denotes any number of dimensions.
+  Returns q1*q2 as a tensor of shape [*, 4].
+  """
+  assert q1.shape[-1] == 4
+  assert q2.shape[-1] == 4
+  original_shape = q1.shape
+
+  # Compute outer product
+  terms = th.bmm(q2.view(-1, 4, 1), q1.view(-1, 1, 4))
+  w = terms[:, 0, 0] - terms[:, 1, 1] - terms[:, 2, 2] - terms[:, 3, 3]
+  x = terms[:, 0, 1] + terms[:, 1, 0] - terms[:, 2, 3] + terms[:, 3, 2]
+  y = terms[:, 0, 2] + terms[:, 1, 3] + terms[:, 2, 0] - terms[:, 3, 1]
+  z = terms[:, 0, 3] - terms[:, 1, 2] + terms[:, 2, 1] + terms[:, 3, 0]
+
+  return th.stack((w, x, y, z), dim=1).view(original_shape)
+
+
+def q_conjugate(q):
+  """
+  Returns the complex conjugate of the input quaternion tensor of shape [*, 4].
+  """
+  assert q.shape[-1] == 4
+
+  # multiplication coefficients per element
+  conj = th.tensor([1, -1, -1, -1], device=q.device)
+  return q * conj.expand_as(q)
 
 
 def chamfer_distance(points1, points2):
@@ -188,6 +238,8 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
     model.train()
     # pbar = tqdm(desc=f'Training Epoch {epoch}', total=len(train))
     train_losses = []
+    rot_diffs = []
+    pos_diffs = []
     for _ in range(batches_per_epoch):
       if mode == 'ep':
         shuffle(train)
@@ -200,18 +252,42 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
         optimizer.step()
         train_losses.append(loss.item())
 
+        rot_diff = quaternion_distance(outputs, y_batch)
+        rot_diffs.append(rot_diff)
+
+        pos_diff = position_distance(outputs, y_batch)
+        pos_diffs.append(pos_diff)
+
       # pbar.update(1)
     mean_train_loss = sum(train_losses)/len(train_losses)
+    mean_rot_diff = sum(rot_diffs)/len(rot_diffs)
+    mean_pos_diff = sum(pos_diffs)/len(pos_diffs)
     writer.add_scalar(f'Loss({loss_fn})/Train', mean_train_loss, epoch)
+    writer.add_scalar(f'Loss(rot_diff)/Train', mean_rot_diff, epoch)
+    writer.add_scalar(f'Loss(pos_diff)/Train', mean_pos_diff, epoch)
     model.eval()
     val_losses = []
+    val_rot_diffs = []
+    val_pos_diffs = []
     for _, (x_batch, y_batch) in enumerate(val):
       outputs = model(x_batch)
       val_loss = criterion(outputs, y_batch)
       val_losses.append(val_loss)
+
+      rot_diff = quaternion_distance(outputs, y_batch)
+      val_rot_diffs.append(rot_diff)
+
+      pos_diff = position_distance(outputs, y_batch)
+      val_pos_diffs.append(pos_diff)
     mean_val_loss = sum(val_losses) / \
         len(val_losses) if len(val_losses) > 0 else float('inf')
+    mean_val_rot_diff = sum(val_rot_diffs) / \
+        len(val_rot_diffs) if len(val_rot_diffs) > 0 else float('inf')
+    mean_val_pos_diff = sum(val_pos_diffs) / \
+        len(val_pos_diffs) if len(val_pos_diffs) > 0 else float('inf')
     writer.add_scalar(f'Loss({loss_fn})/Val', mean_val_loss, epoch)
+    writer.add_scalar(f'Loss(rot_diff)/Val', mean_val_rot_diff, epoch)
+    writer.add_scalar(f'Loss(pos_diff)/Val', mean_val_pos_diff, epoch)
 
     # pbar.set_postfix({
     #     'Train Loss': train_loss,
@@ -267,11 +343,11 @@ if __name__ == '__main__':
   from copy import deepcopy
   import threading
   # Testing custom nn:
-  logger.info('testing `train_model` with mode=eq and loss=chamfer')
-  data = read_data('data/data.csv', 'data/events.csv', flatten=False)
-  t1 = threading.Thread(target=train_model, args=(
-      deepcopy(data), 'output/test_ep.onnx', 2**15), kwargs={'mode': 'ep', 'tensor_prefix': 'ep'})
-  t1.start()
+  # logger.info('testing `train_model` with mode=eq and loss=chamfer')
+  # data = read_data('data/data.csv', 'data/events.csv', flatten=False)
+  # t1 = threading.Thread(target=train_model, args=(
+  #     deepcopy(data), 'output/test_ep.onnx', 2**15), kwargs={'mode': 'ep', 'tensor_prefix': 'ep'})
+  # t1.start()
 
   # train_model(data, 'output/test.onnx', 10, tensor_prefix='ep')
   logger.info('testing `train_model` with mode=flatten and loss=chamfer')

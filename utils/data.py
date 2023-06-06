@@ -53,7 +53,7 @@ def get_mean(data_path, event_path):
   return result
 
 
-def read_data(data_path, event_path, obs_size=14, flatten=False, shuffle_tensors=True):
+def read_data(data_path, event_path, obs_size=14, acs_size=7, flatten=False, shuffle_tensors=True, split_ratio=0.7):
   logger = logging.getLogger()
   data = pd.read_csv(data_path)
 
@@ -101,14 +101,14 @@ def read_data(data_path, event_path, obs_size=14, flatten=False, shuffle_tensors
     prev_idx = i
     temp = dataset[mask].copy()
     obs = temp.values[:, :obs_size].astype(np.float32)
-    acs = temp.values[:, obs_size:].astype(np.float32)
+    acs = temp.values[:, -acs_size:].astype(np.float32)
     if len(acs[:-1, :]) < 5:
       logger.warning(
           'need at least 100 datapoints for each episode. skipping this episode...')
       continue
 
     batches.append((th.Tensor(obs[:-1]).to(device),
-                   th.Tensor(obs[1:, :7]).to(device)))
+                   th.Tensor(obs[1:, :acs_size]).to(device)))
 
 
   shuffle(batches)
@@ -119,12 +119,12 @@ def read_data(data_path, event_path, obs_size=14, flatten=False, shuffle_tensors
       indices = th.randperm(size)
       x = x[indices]
       y = y[indices]
-    train = TensorDataset(x[0:int(size*0.7)], y[0:int(size*0.7)])
-    val = TensorDataset(x[int(size*0.7):], y[int(size*0.7):])
+    train = TensorDataset(x[0:int(size*split_ratio)], y[0:int(size*split_ratio)])
+    val = TensorDataset(x[int(size*split_ratio):], y[int(size*split_ratio):])
     # val = flatten_seq(val)
   else:
-    train = batches[0:int(len(batches)*0.7)]
-    val = batches[int(len(batches)*0.7):]
+    train = batches[0:int(len(batches)*split_ratio)]
+    val = batches[int(len(batches)*split_ratio):]
 
   logger.info(f'train samples: {len(train)} -- val samples: {len(val)}')
   return (train, val)
