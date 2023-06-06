@@ -160,8 +160,8 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
   os.makedirs(tensor_path, exist_ok=True)
   writer = SummaryWriter(tensor_path)
 
-  patience = 2048+1
-  min_delta = 0
+  patience = 1024+1
+  min_delta = 1e-4
 
   model = get_model()
 
@@ -221,14 +221,15 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
     # })
     # pbar.close()
 
-    best = mean_val_loss < (best_val_loss + min_delta)
+    best = (mean_val_loss + min_delta) < best_val_loss
+    if best:
+      counter = 0
 
     logger.info(
         f'epoch {epoch:>5d}/{num_epochs} {(epoch*100)//num_epochs:>3d}%: avg_train_loss={mean_train_loss:.4e}, avg_val_loss={mean_val_loss:.4e}, lr={optimizer.param_groups[0]["lr"]:.1e}, best={best}')
 
-    if best:
+    if mean_val_loss < best_val_loss:
       best_val_loss = mean_val_loss
-      counter = 0
       th.save({
           'epoch': epoch,
           'model_state_dict': model.state_dict(),
@@ -247,7 +248,6 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
     scheduler.step()
 
   try:
-    pass
     logger.info('loading the best model...')
     checkpoint = th.load(f'{output_path[:-4]}pt')
     model.load_state_dict(checkpoint['model_state_dict'])
