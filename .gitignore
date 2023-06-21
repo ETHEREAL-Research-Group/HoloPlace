@@ -1,4 +1,4 @@
-data
+data/*/output
 output
 baseline
 checkpoint
@@ -9,3 +9,6 @@ checkpoint
 *.log
 *.pt
 *__pycache__*
+old
+*.png
+plot.py

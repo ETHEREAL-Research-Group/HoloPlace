@@ -53,7 +53,14 @@ def get_mean(data_path, event_path):
   return result
 
 
-def read_data(data_path, event_path, obs_size=14, acs_size=7, flatten=False, shuffle_tensors=True, split_ratio=0.7):
+def normalize_quaternions(quaternions):
+  # Normalize the quaternions to unit length
+  quaternions_norm = th.norm(quaternions, dim=1, p=2, keepdim=True)
+
+  return quaternions / quaternions_norm
+
+
+def read_data(data_path, event_path, obs_size=21, acs_size=7, flatten=True, shuffle_tensors=True, split_ratio=[0.7, 0.15, 0.15]):
   logger = logging.getLogger()
   data = pd.read_csv(data_path)
 
@@ -102,9 +109,9 @@ def read_data(data_path, event_path, obs_size=14, acs_size=7, flatten=False, shu
     temp = dataset[mask].copy()
     obs = temp.values[:, :obs_size].astype(np.float32)
     acs = temp.values[:, -acs_size:].astype(np.float32)
-    if len(acs[:-1, :]) < 5:
+    if len(acs[:-1, :]) < 1:
       logger.warning(
-          'need at least 100 datapoints for each episode. skipping this episode...')
+          'need at least 1 datapoints for each episode. skipping this episode...')
       continue
 
     batches.append((th.Tensor(obs[:-1]).to(device),
@@ -114,20 +121,27 @@ def read_data(data_path, event_path, obs_size=14, acs_size=7, flatten=False, shu
   shuffle(batches)
   if flatten:
     x, y = flatten_seq(batches)
+    y[:,-4:] = normalize_quaternions(y[:,-4:])
     size = len(x)
     if shuffle_tensors:
       indices = th.randperm(size)
       x = x[indices]
       y = y[indices]
-    train = TensorDataset(x[0:int(size*split_ratio)], y[0:int(size*split_ratio)])
-    val = TensorDataset(x[int(size*split_ratio):], y[int(size*split_ratio):])
-    # val = flatten_seq(val)
+    train_idx = int(size*split_ratio[0])
+    val_idx = int(size*(split_ratio[0] + split_ratio[1]))
+    train = TensorDataset(x[0:train_idx], y[0:train_idx])
+    val = TensorDataset(x[train_idx:val_idx], y[train_idx:val_idx])
+    test = TensorDataset(x[val_idx:], y[val_idx:])
   else:
-    train = batches[0:int(len(batches)*split_ratio)]
-    val = batches[int(len(batches)*split_ratio):]
+    size = len(batches)
+    train_idx = int(size*split_ratio[0])
+    val_idx = int(size*(split_ratio[0] + split_ratio[1]))
+    train = batches[0:train_idx]
+    val = batches[train_idx:val_idx]
+    test = batches[val_idx:]
 
-  logger.info(f'train samples: {len(train)} -- val samples: {len(val)}')
-  return (train, val)
+  logger.info(f'train samples: {len(train)} -- val samples: {len(val)} -- test samples: {len(test)}')
+  return (train, val, test)
 
 
 if __name__ == '__main__':
@@ -135,7 +149,6 @@ if __name__ == '__main__':
       format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO, datefmt='%m-%d %H:%M:%S')
   logger = logging.getLogger()
   logger.info('testing `read_data()`...')
-  train, val = read_data('data/data.csv', 'data/events.csv', flatten=True)
-  logger.info(f'train samples: {len(train)} -- val samples: {len(val)}')
+  read_data('data/data.csv', 'data/events.csv', flatten=True)
   logger.info('testing `get_mean()`...')
   get_mean('data/data.csv', 'data/events.csv')

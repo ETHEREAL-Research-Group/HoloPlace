@@ -2,6 +2,8 @@ import threading
 import torch as th
 import logging
 import math
+import scipy.stats as st
+import matplotlib.pyplot as plt
 from random import shuffle
 logger = logging.getLogger()
 
@@ -11,14 +13,33 @@ device = th.device('cuda' if th.cuda.is_available() else 'cpu')
 def position_distance(points1, points2):
   positions1 = points1[:, :3]
   positions2 = points2[:, :3]
-  res = th.norm(positions1 - positions2, dim=1, p=2)
-  return res.mean().detach()
+  res = th.norm(positions1 - positions2, dim=1, p=2, keepdim=True)
+  if (res.isnan().any()):
+    logger.error('HM.. something went wrong')
+  return th.mean(res)
 
 
-def normalize_quaternions(quaternions):
+epsilon = th.finfo(th.float32).eps
+
+def normalize_quaternions(quaternions: th.Tensor):
   # Normalize the quaternions to unit length
-  quaternions_norm = th.norm(quaternions, dim=1, keepdim=True)
-  return quaternions / quaternions_norm
+  quaternions_norm = th.norm(quaternions, dim=1, p=2, keepdim=True)
+  # zero_mask = quaternions_norm == 0.0
+  # quaternions_norm += epsilon * zero_mask
+  # so that we don't get division by zero
+  normalized = quaternions / (quaternions_norm+epsilon)
+  # identity_quat = th.tensor(
+  #     [[0.0, 0.0, 0.0, 1.0]]).expand(normalized.shape[0], -1)
+  # nan_mask = th.isnan(normalized)
+  # if (nan_mask.any()):
+  #   logger.warning('all zero quaternions...')
+  # normalized[nan_mask] = identity_quat[nan_mask]
+
+  # if (th.isnan(normalized).any()):
+  #   logger.error('all zero quaternions...')
+  #   raise Exception()
+
+  return normalized
 
 
 def wrap_angle(theta):
@@ -33,13 +54,18 @@ def wrap_angle(theta):
   return result
 
 
-def quaternion_distance(points1, points2):
-  q1 = normalize_quaternions(points1[:, 3:])
-  q2 = normalize_quaternions(points2[:, 3:])
-  dot_product = th.sum(q1 * q2, dim=1)
-  angle = th.acos(2 * (dot_product ** 2) - 1)
-  return angle.mean().detach()
-  
+def geodesic_loss(points1, points2):
+  q1 = normalize_quaternions(points1[:, -4:])
+  q2 = normalize_quaternions(points2[:, -4:])
+  dot_product = th.clip(th.sum(q1 * q2, dim=-1), min=-1, max=1)
+  angle = th.abs(th.acos(2 * dot_product**2 - 1))
+  if (angle.isnan().any()):
+    print(points1)
+    print(points2)
+    raise Exception()
+    logger.error('HERE WE GO AGAIN...')
+  return th.mean(angle)
+
   # diff = q_mul(q_conjugate(quaternions1), quaternions2)
   # Rotation.from_quat(quaternions1).
   # x = th.abs(wrap_angle(th.Tensor(Rotation.from_quat(
@@ -119,24 +145,38 @@ def get_model():
 
     def forward(self, x):
       # Split the input tensor into position and quaternion parts
-      if (len(x.shape) == 1):
-        position = x[:3]
-        quaternion = x[3:]
-      else:
-        position = x[:, :3]
-        quaternion = x[:, 3:]
+      # print(x.shape)
+      # if (len(x.shape) == 1):
+      #   return x
+      # else:
+      # if (x.shape[0] == 1):
+      #   return x
+      position = x[:, :3]
+      quaternion = x[:, -4:]
 
       # Normalize the quaternion part
       quaternion_norm = th.norm(quaternion, p=2, dim=-1, keepdim=True)
-      normalize_quaternions = quaternion / quaternion_norm
+      normalized = quaternion / (quaternion_norm+epsilon)
+
+      # identity_quat = th.tensor(
+      #     [[0.0, 0.0, 0.0, 1.0]]).expand(normalized.shape[0], -1)
+      # nan_mask = th.isnan(normalized)
+      # if (nan_mask.any()):
+      #   logger.warning('all zero quaternions...')
+      # normalized[nan_mask] = identity_quat[nan_mask]
+
       # quaternion = nn.functional.normalize(quaternion, p=2, dim=-1)
 
       # Concatenate the position and normalized quaternion parts
-      normalized_x = th.cat([position, normalize_quaternions], dim=-1)
+      normalized_x = th.cat([position, normalized], dim=-1)
+      # if th.isnan(normalized_x).any():
+      #   print(x)
+      #   print(normalized_x)
+      #   raise Exception()
 
       return normalized_x
 
-  input_size = 14
+  input_size = 21
   output_size = 7
   logger.info('creating the model...')
   model = nn.Sequential(
@@ -161,6 +201,7 @@ def get_model():
       nn.Dropout(0.1),
 
       nn.Linear(256, output_size),
+      # nn.Tanh(),
       QuatNormLayer()
   ).to(device)
 
@@ -171,11 +212,12 @@ def prep_data(data):
   batch_size = 512
 
   from torch.utils.data import DataLoader
-  train, val = data
+  train, val, test = data
 
   train = DataLoader(train, batch_size=batch_size, shuffle=True)
   val = DataLoader(val, batch_size=batch_size, shuffle=True)
-  return train, val
+  test = DataLoader(test, batch_size=1, shuffle=True)
+  return train, val, test
 
 
 def static_vars(**kwargs):
@@ -192,7 +234,7 @@ def export(model, path):
   export.lock.acquire()  # type: ignore
   th.onnx.export(
       model,
-      th.ones([1, 14], dtype=th.float32, device=device),
+      th.ones([1, 21], dtype=th.float32, device=device),
       path,
       opset_version=9,
       input_names=['input'],
@@ -201,7 +243,7 @@ def export(model, path):
   export.lock.release()  # type: ignore
 
 
-def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='flatten', tensor_prefix='default', batches_per_epoch=1):
+def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten', tensor_prefix='default', batches_per_epoch=1):
   import torch.optim as optim
   from torch.utils.tensorboard.writer import SummaryWriter
   from pathlib import Path
@@ -211,11 +253,14 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
   writer = SummaryWriter(tensor_path)
 
   patience = 1024+1
-  min_delta = 1e-4
+  if loss_fn == 'mse':
+    min_delta = 5e-6
+  else:
+    min_delta = 5e-3
 
   model = get_model()
 
-  # criterion = nn.MSELoss()
+  # criterion = th.nn.MSELoss()
   if loss_fn == 'chamfer':
     criterion = chamfer_distance
   elif loss_fn == 'mse':
@@ -223,15 +268,15 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
   else:
     raise Exception('invalid argument for loss')
 
-  optimizer = optim.Adam(model.parameters(), lr=1e-3, eps=1e-8)
+  optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)  # , eps=1e-5)
   scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=0.9, step_size=128)
 
   if mode == 'flatten':
     data = prep_data(data)
 
-  train, val = data
+  train, val, test = data
 
-  best_val_loss = float('inf')
+  best_loss = float('inf')
   counter = 0
 
   for epoch in range(num_epochs):
@@ -249,22 +294,20 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
         loss = criterion(outputs, y_batch)
         loss.backward()
 
-        optimizer.step()
         train_losses.append(loss.item())
-
-        rot_diff = quaternion_distance(outputs, y_batch)
-        rot_diffs.append(rot_diff)
-
+        rot_diff = geodesic_loss(outputs, y_batch)
         pos_diff = position_distance(outputs, y_batch)
-        pos_diffs.append(pos_diff)
-
+        rot_diffs.append(rot_diff.item())
+        pos_diffs.append(pos_diff.item())
+        
+        optimizer.step()
       # pbar.update(1)
     mean_train_loss = sum(train_losses)/len(train_losses)
     mean_rot_diff = sum(rot_diffs)/len(rot_diffs)
     mean_pos_diff = sum(pos_diffs)/len(pos_diffs)
-    writer.add_scalar(f'Loss({loss_fn})/Train', mean_train_loss, epoch)
-    writer.add_scalar(f'Loss(rot_diff)/Train', mean_rot_diff, epoch)
-    writer.add_scalar(f'Loss(pos_diff)/Train', mean_pos_diff, epoch)
+    writer.add_scalar(f'Loss/Train', mean_train_loss, epoch)
+    writer.add_scalar(f'Rot_Loss/Train', mean_rot_diff, epoch)
+    writer.add_scalar(f'Pos_loss/Train', mean_pos_diff, epoch)
     model.eval()
     val_losses = []
     val_rot_diffs = []
@@ -272,22 +315,22 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
     for _, (x_batch, y_batch) in enumerate(val):
       outputs = model(x_batch)
       val_loss = criterion(outputs, y_batch)
-      val_losses.append(val_loss)
+      val_losses.append(val_loss.item())
 
-      rot_diff = quaternion_distance(outputs, y_batch)
-      val_rot_diffs.append(rot_diff)
+      rot_diff = geodesic_loss(outputs, y_batch)
+      val_rot_diffs.append(rot_diff.item())
 
       pos_diff = position_distance(outputs, y_batch)
-      val_pos_diffs.append(pos_diff)
+      val_pos_diffs.append(pos_diff.item())
     mean_val_loss = sum(val_losses) / \
         len(val_losses) if len(val_losses) > 0 else float('inf')
-    mean_val_rot_diff = sum(val_rot_diffs) / \
-        len(val_rot_diffs) if len(val_rot_diffs) > 0 else float('inf')
-    mean_val_pos_diff = sum(val_pos_diffs) / \
-        len(val_pos_diffs) if len(val_pos_diffs) > 0 else float('inf')
-    writer.add_scalar(f'Loss({loss_fn})/Val', mean_val_loss, epoch)
-    writer.add_scalar(f'Loss(rot_diff)/Val', mean_val_rot_diff, epoch)
-    writer.add_scalar(f'Loss(pos_diff)/Val', mean_val_pos_diff, epoch)
+    mean_val_rot_diff = sum(
+        val_rot_diffs) / len(val_rot_diffs) if len(val_rot_diffs) > 0 else float('inf')
+    mean_val_pos_diff = sum(
+        val_pos_diffs) / len(val_pos_diffs) if len(val_pos_diffs) > 0 else float('inf')
+    writer.add_scalar(f'Loss/Val', mean_val_loss, epoch)
+    writer.add_scalar(f'Rot_Loss/Val', mean_val_rot_diff, epoch)
+    writer.add_scalar(f'Pos_loss/Val', mean_val_pos_diff, epoch)
 
     # pbar.set_postfix({
     #     'Train Loss': train_loss,
@@ -297,15 +340,16 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
     # })
     # pbar.close()
 
-    best = (mean_val_loss + min_delta) < best_val_loss
+    best = (mean_val_loss + min_delta) < best_loss
     if best:
       counter = 0
 
     logger.info(
-        f'epoch {epoch:>5d}/{num_epochs} {(epoch*100)//num_epochs:>3d}%: avg_train_loss={mean_train_loss:.4e}, avg_val_loss={mean_val_loss:.4e}, lr={optimizer.param_groups[0]["lr"]:.1e}, best={best}')
+        f'epoch {epoch:>5d}/{num_epochs} {(epoch*100)//num_epochs:>3d}%: pos_loss={mean_pos_diff:.4e}, rot_loss={mean_rot_diff:.4e}, val_pos_loss={mean_val_pos_diff:.4e}, val_rot_loss={mean_val_rot_diff:.4e}, train_loss={mean_train_loss:.4e}, val_loss={mean_val_loss:.4e}, lr={optimizer.param_groups[0]["lr"]:.1e}, best={best}')
 
-    if mean_val_loss < best_val_loss:
-      best_val_loss = mean_val_loss
+    if mean_val_loss < best_loss:
+      logger.info('saving the best model so far...')
+      best_loss = mean_val_loss
       th.save({
           'epoch': epoch,
           'model_state_dict': model.state_dict(),
@@ -330,9 +374,61 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='chamfer', mode='fla
   except:
     logger.error(f'{output_path[:-4]}pt could not be found...')
 
+  logger.info('testing the model...')
+
+  model.eval()
+  test_losses = []
+  test_rot_diffs = []
+  test_pos_diffs = []
+  for x, y in test:
+    pred = model(x)
+    test_loss = criterion(pred, y)
+    test_losses.append(test_loss.item())
+
+    rot_diff = geodesic_loss(pred, y)
+    test_rot_diffs.append(rot_diff.item())
+
+    pos_diff = position_distance(pred, y)
+    test_pos_diffs.append(pos_diff.item())
+
+  rot_intervals = st.t.interval(0.95, len(test_rot_diffs)-1, loc=th.mean(
+      th.Tensor(test_rot_diffs)), scale=st.sem(th.Tensor(test_rot_diffs)))
+  mean_test_rot_diff = sum(
+      test_rot_diffs) / len(test_rot_diffs) if len(test_rot_diffs) > 0 else float('inf')
+  loss_intervals = st.t.interval(0.95, len(
+      test_losses)-1, loc=th.mean(th.Tensor(test_losses)), scale=st.sem(th.Tensor(test_losses)))
+  mean_test_loss = sum(test_losses) / \
+      len(test_losses) if len(test_losses) > 0 else float('inf')
+  pos_intervals = st.t.interval(0.95, len(test_pos_diffs)-1, loc=th.mean(
+      th.Tensor(test_pos_diffs)), scale=st.sem(th.Tensor(test_pos_diffs)))
+  mean_test_pos_diff = sum(
+      test_pos_diffs) / len(test_pos_diffs) if len(test_pos_diffs) > 0 else float('inf')
+  # writer.add_embedding(th.Tensor(test_losses).expand(len(test_losses), -1), tag="Test/Loss")
+  # writer.add_embedding(th.Tensor(test_rot_diffs).expand(len(test_losses), -1), tag="Test/Rot_Loss")
+  # writer.add_embedding(th.Tensor(test_pos_diffs).expand(len(test_losses), -1), tag="Test/Pos_Loss")
+  writer.add_scalar(f'Test/Loss', mean_test_loss)
+  writer.add_scalar(f'Test/Rot_Loss', mean_test_rot_diff)
+  writer.add_scalar(f'Test/Pos_loss', mean_test_pos_diff)
+
+  writer.add_scalar(f'Test/Loss_CI', loss_intervals[1] - mean_test_loss)
+  writer.add_scalar(f'Test/Rot_Loss_CI', rot_intervals[1] - mean_test_rot_diff)
+  writer.add_scalar(f'Test/Pos_loss_CI', pos_intervals[1] - mean_test_pos_diff)
+
+  fig = plt.figure(dpi=300)
+  ax = plt.subplot(111)
+
+  ax.set_xticks([1, 2, 3])
+  ax.set_xticklabels(['Pos', 'Rot', 'Loss'])
+  ax.errorbar([1, 2, 3], [mean_test_pos_diff, mean_test_rot_diff, mean_test_loss], yerr=[pos_intervals[1]-mean_test_pos_diff,
+              rot_intervals[1]-mean_test_rot_diff, loss_intervals[1]-mean_test_loss], marker="o", capsize=2, markersize=4, ls='none')
+
+  writer.add_figure('Fig/Test', fig)
+
   export(model, output_path)
   logger.info('training finished')
   writer.close()
+
+  return {'test_loss': {'m': mean_test_loss, 'ci': loss_intervals[1] - mean_test_loss}, 'test_rot_loss': {'m': mean_test_rot_diff, 'ci': rot_intervals[1] - mean_test_rot_diff}, 'test_pos_loss': {'m': mean_test_pos_diff, 'ci': pos_intervals[1] - mean_test_pos_diff}}
 
 
 if __name__ == '__main__':
@@ -343,31 +439,18 @@ if __name__ == '__main__':
   from copy import deepcopy
   import threading
   # Testing custom nn:
-  # logger.info('testing `train_model` with mode=eq and loss=chamfer')
-  # data = read_data('data/data.csv', 'data/events.csv', flatten=False)
+  # logger.info('testing `train_model` with mode=flatten and loss=chamfer')
+  data = read_data('data/data.csv', 'data/events.csv', flatten=True)
   # t1 = threading.Thread(target=train_model, args=(
-  #     deepcopy(data), 'output/test_ep.onnx', 2**15), kwargs={'mode': 'ep', 'tensor_prefix': 'ep'})
+  #     deepcopy(data), 'output/test_chamfer.onnx', 2**15), kwargs={'mode': 'flatten', 'loss_fn': 'chamfer', 'tensor_prefix': 'chamfer'})
   # t1.start()
 
   # train_model(data, 'output/test.onnx', 10, tensor_prefix='ep')
-  logger.info('testing `train_model` with mode=flatten and loss=chamfer')
-  flat_data = read_data('data/data.csv', 'data/events.csv', flatten=True)
+  logger.info('testing `train_model` with mode=flatten and loss=mse')
+  # flat_data = read_data('data/data.csv', 'data/events.csv', flatten=True)
   t2 = threading.Thread(target=train_model, args=(
-      deepcopy(flat_data), 'output/test_flat.onnx', 2**15), kwargs={'mode': 'flatten', 'tensor_prefix': 'flat'})
+      deepcopy(data), 'output/test_mse.onnx', 2**15), kwargs={'mode': 'flatten', 'loss_fn': 'mse', 'tensor_prefix': 'mse'})
   t2.start()
 
-  # logger.info('testing `train_model` with mode=ep and loss=mse')
-  # t3 = threading.Thread(target=train_model, args=(
-  #     deepcopy(data), 'output/test_mse_ep.onnx', 2**15), kwargs={'mode': 'ep', 'loss_fn': 'mse', 'tensor_prefix': 'mse-ep'})
-  # t3.start()
-
-  # logger.info('testing `train_model` with mode=flat and loss=mse')
-  # t4 = threading.Thread(target=train_model, args=(
-  #     deepcopy(flat_data), 'output/test_mse_flat.onnx', 2**15), kwargs={'mode': 'flatten', 'loss_fn': 'mse', 'tensor_prefix': 'mse-flat'})
-  # t4.start()
-  # train_model(data, 'output/test.onnx', 10,
-  #             mode='flatten', tensor_prefix='flatten')
   # t1.join()
   t2.join()
-  # t3.join()
-  # t4.join()
