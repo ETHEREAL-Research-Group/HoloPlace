@@ -3,7 +3,8 @@ import torch as th
 import logging
 import math
 import scipy.stats as st
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
+import numpy as np
 from random import shuffle
 logger = logging.getLogger()
 
@@ -20,6 +21,7 @@ def position_distance(points1, points2):
 
 
 epsilon = th.finfo(th.float32).eps
+
 
 def normalize_quaternions(quaternions: th.Tensor):
   # Normalize the quaternions to unit length
@@ -59,11 +61,6 @@ def geodesic_loss(points1, points2):
   q2 = normalize_quaternions(points2[:, -4:])
   dot_product = th.clip(th.sum(q1 * q2, dim=-1), min=-1, max=1)
   angle = th.abs(th.acos(2 * dot_product**2 - 1))
-  if (angle.isnan().any()):
-    print(points1)
-    print(points2)
-    raise Exception()
-    logger.error('HERE WE GO AGAIN...')
   return th.mean(angle)
 
   # diff = q_mul(q_conjugate(quaternions1), quaternions2)
@@ -137,43 +134,14 @@ def get_model():
     def __init__(self):
       super(QuatNormLayer, self).__init__()
 
-    # def forward(self, x):
-    #   # Implement the desired functionality of the custom layer
-    #   x_copy = th.Tensor(x)
-    #   x_copy[:, 3:] = x[:,3:] / th.norm(x[:, 3:], dim=1, keepdim=True)
-    #   return x_copy
-
     def forward(self, x):
-      # Split the input tensor into position and quaternion parts
-      # print(x.shape)
-      # if (len(x.shape) == 1):
-      #   return x
-      # else:
-      # if (x.shape[0] == 1):
-      #   return x
       position = x[:, :3]
       quaternion = x[:, -4:]
 
       # Normalize the quaternion part
       quaternion_norm = th.norm(quaternion, p=2, dim=-1, keepdim=True)
       normalized = quaternion / (quaternion_norm+epsilon)
-
-      # identity_quat = th.tensor(
-      #     [[0.0, 0.0, 0.0, 1.0]]).expand(normalized.shape[0], -1)
-      # nan_mask = th.isnan(normalized)
-      # if (nan_mask.any()):
-      #   logger.warning('all zero quaternions...')
-      # normalized[nan_mask] = identity_quat[nan_mask]
-
-      # quaternion = nn.functional.normalize(quaternion, p=2, dim=-1)
-
-      # Concatenate the position and normalized quaternion parts
       normalized_x = th.cat([position, normalized], dim=-1)
-      # if th.isnan(normalized_x).any():
-      #   print(x)
-      #   print(normalized_x)
-      #   raise Exception()
-
       return normalized_x
 
   input_size = 21
@@ -201,7 +169,6 @@ def get_model():
       nn.Dropout(0.1),
 
       nn.Linear(256, output_size),
-      # nn.Tanh(),
       QuatNormLayer()
   ).to(device)
 
@@ -252,7 +219,7 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
   os.makedirs(tensor_path, exist_ok=True)
   writer = SummaryWriter(tensor_path)
 
-  patience = 1024+1
+  patience = 512+1
   if loss_fn == 'mse':
     min_delta = 5e-6
   else:
@@ -268,8 +235,9 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
   else:
     raise Exception('invalid argument for loss')
 
-  optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)  # , eps=1e-5)
-  scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=0.9, step_size=128)
+  optimizer = optim.Adam(model.parameters(), lr=1e-3,
+                         weight_decay=1e-5)  # , eps=1e-5)
+  scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=0.5, step_size=128)
 
   if mode == 'flatten':
     data = prep_data(data)
@@ -299,7 +267,7 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
         pos_diff = position_distance(outputs, y_batch)
         rot_diffs.append(rot_diff.item())
         pos_diffs.append(pos_diff.item())
-        
+
         optimizer.step()
       # pbar.update(1)
     mean_train_loss = sum(train_losses)/len(train_losses)
@@ -322,10 +290,8 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
 
       pos_diff = position_distance(outputs, y_batch)
       val_pos_diffs.append(pos_diff.item())
-    mean_val_loss = sum(val_losses) / \
-        len(val_losses) if len(val_losses) > 0 else float('inf')
-    mean_val_rot_diff = sum(
-        val_rot_diffs) / len(val_rot_diffs) if len(val_rot_diffs) > 0 else float('inf')
+    mean_val_loss = sum(val_losses) / len(val_losses)
+    mean_val_rot_diff = sum(val_rot_diffs) / len(val_rot_diffs) if len(val_rot_diffs) > 0 else float('inf')
     mean_val_pos_diff = sum(
         val_pos_diffs) / len(val_pos_diffs) if len(val_pos_diffs) > 0 else float('inf')
     writer.add_scalar(f'Loss/Val', mean_val_loss, epoch)
@@ -380,9 +346,19 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
   test_losses = []
   test_rot_diffs = []
   test_pos_diffs = []
+  i = 0
+
+  true_list = []
+  pred_list = []
+
   for x, y in test:
     pred = model(x)
+    true_list.append(y.detach().numpy()[0])
+    pred_list.append(pred.detach().numpy()[0])
+
     test_loss = criterion(pred, y)
+    
+    i += 1
     test_losses.append(test_loss.item())
 
     rot_diff = geodesic_loss(pred, y)
@@ -390,6 +366,9 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
 
     pos_diff = position_distance(pred, y)
     test_pos_diffs.append(pos_diff.item())
+
+  np.save(f'{output_path[:-10]}true.npy', np.array(true_list))
+  np.save(f'{output_path[:-10]}pred.npy', np.array(pred_list))
 
   rot_intervals = st.t.interval(0.95, len(test_rot_diffs)-1, loc=th.mean(
       th.Tensor(test_rot_diffs)), scale=st.sem(th.Tensor(test_rot_diffs)))
@@ -406,29 +385,32 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
   # writer.add_embedding(th.Tensor(test_losses).expand(len(test_losses), -1), tag="Test/Loss")
   # writer.add_embedding(th.Tensor(test_rot_diffs).expand(len(test_losses), -1), tag="Test/Rot_Loss")
   # writer.add_embedding(th.Tensor(test_pos_diffs).expand(len(test_losses), -1), tag="Test/Pos_Loss")
-  writer.add_scalar(f'Test/Loss', mean_test_loss)
-  writer.add_scalar(f'Test/Rot_Loss', mean_test_rot_diff)
-  writer.add_scalar(f'Test/Pos_loss', mean_test_pos_diff)
 
-  writer.add_scalar(f'Test/Loss_CI', loss_intervals[1] - mean_test_loss)
-  writer.add_scalar(f'Test/Rot_Loss_CI', rot_intervals[1] - mean_test_rot_diff)
-  writer.add_scalar(f'Test/Pos_loss_CI', pos_intervals[1] - mean_test_pos_diff)
+  # writer.add_scalar(f'Test/Loss', mean_test_loss)
+  # writer.add_scalar(f'Test/Rot_Loss', mean_test_rot_diff)
+  # writer.add_scalar(f'Test/Pos_loss', mean_test_pos_diff)
 
-  fig = plt.figure(dpi=300)
-  ax = plt.subplot(111)
+  # writer.add_scalar(f'Test/Loss_CI', loss_intervals[1] - mean_test_loss)
+  # writer.add_scalar(f'Test/Rot_Loss_CI', rot_intervals[1] - mean_test_rot_diff)
+  # writer.add_scalar(f'Test/Pos_loss_CI', pos_intervals[1] - mean_test_pos_diff)
 
-  ax.set_xticks([1, 2, 3])
-  ax.set_xticklabels(['Pos', 'Rot', 'Loss'])
-  ax.errorbar([1, 2, 3], [mean_test_pos_diff, mean_test_rot_diff, mean_test_loss], yerr=[pos_intervals[1]-mean_test_pos_diff,
-              rot_intervals[1]-mean_test_rot_diff, loss_intervals[1]-mean_test_loss], marker="o", capsize=2, markersize=4, ls='none')
+  # fig = plt.figure(dpi=300)
+  # ax = plt.subplot(111)
 
-  writer.add_figure('Fig/Test', fig)
+  # ax.set_xticks([1, 2, 3])
+  # ax.set_xticklabels(['Pos', 'Rot', 'Loss'])
+  # ax.errorbar([1, 2, 3], [mean_test_pos_diff, mean_test_rot_diff, mean_test_loss], yerr=[pos_intervals[1]-mean_test_pos_diff,
+  #             rot_intervals[1]-mean_test_rot_diff, loss_intervals[1]-mean_test_loss], marker="o", capsize=2, markersize=4, ls='none')
+
+  # writer.add_figure('Fig/Test', fig)
 
   export(model, output_path)
   logger.info('training finished')
   writer.close()
 
-  return {'test_loss': {'m': mean_test_loss, 'ci': loss_intervals[1] - mean_test_loss}, 'test_rot_loss': {'m': mean_test_rot_diff, 'ci': rot_intervals[1] - mean_test_rot_diff}, 'test_pos_loss': {'m': mean_test_pos_diff, 'ci': pos_intervals[1] - mean_test_pos_diff}}
+  end_result = {'test_loss': {'m': mean_test_loss, 'ci': loss_intervals[1] - mean_test_loss}, 'test_rot_loss': {
+      'm': mean_test_rot_diff, 'ci': rot_intervals[1] - mean_test_rot_diff}, 'test_pos_loss': {'m': mean_test_pos_diff, 'ci': pos_intervals[1] - mean_test_pos_diff}}
+  return end_result
 
 
 if __name__ == '__main__':
@@ -449,7 +431,7 @@ if __name__ == '__main__':
   logger.info('testing `train_model` with mode=flatten and loss=mse')
   # flat_data = read_data('data/data.csv', 'data/events.csv', flatten=True)
   t2 = threading.Thread(target=train_model, args=(
-      deepcopy(data), 'output/test_mse.onnx', 2**15), kwargs={'mode': 'flatten', 'loss_fn': 'mse', 'tensor_prefix': 'mse'})
+      deepcopy(data), 'output/test_mse.onnx', 1), kwargs={'mode': 'flatten', 'loss_fn': 'mse', 'tensor_prefix': 'mse'})
   t2.start()
 
   # t1.join()

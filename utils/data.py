@@ -33,7 +33,8 @@ def get_mean(data_path, event_path):
     idx_list.append(closest.index.values[0])
 
   data = data.iloc[idx_list]
-  data.drop(['timestamp', 'act_pos', 'act_rot'], axis=1, inplace=True)
+  data.drop(['timestamp', 'act_pos', 'act_rot', 'rif_pos',
+            'rif_rot', 'rpa_pos', 'rpa_rot'], axis=1, inplace=True)
   data[data.columns] = data[data.columns].applymap(
       literal_eval, na_action='ignore')
   dataset = pd.DataFrame()
@@ -50,7 +51,7 @@ def get_mean(data_path, event_path):
 
   # do not change print to logger.info here!
   print(json.dump(result, sys.stderr))
-  return result
+  return th.Tensor(np.expand_dims(dataset.mean().values, 0))
 
 
 def normalize_quaternions(quaternions):
@@ -117,11 +118,10 @@ def read_data(data_path, event_path, obs_size=21, acs_size=7, flatten=True, shuf
     batches.append((th.Tensor(obs[:-1]).to(device),
                    th.Tensor(obs[1:, :acs_size]).to(device)))
 
-
   shuffle(batches)
   if flatten:
     x, y = flatten_seq(batches)
-    y[:,-4:] = normalize_quaternions(y[:,-4:])
+    y[:, -4:] = normalize_quaternions(y[:, -4:])
     size = len(x)
     if shuffle_tensors:
       indices = th.randperm(size)
@@ -140,7 +140,8 @@ def read_data(data_path, event_path, obs_size=21, acs_size=7, flatten=True, shuf
     val = batches[train_idx:val_idx]
     test = batches[val_idx:]
 
-  logger.info(f'train samples: {len(train)} -- val samples: {len(val)} -- test samples: {len(test)}')
+  logger.info(
+      f'train samples: {len(train)} -- val samples: {len(val)} -- test samples: {len(test)}')
   return (train, val, test)
 
 

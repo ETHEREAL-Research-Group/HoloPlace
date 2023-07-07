@@ -10,5 +10,5 @@ checkpoint
 *.pt
 *__pycache__*
 old
-*.png
-plot.py
+Figures
+plot*

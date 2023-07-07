@@ -26,7 +26,7 @@ if __name__ == "__main__":
 
     start_time = epoch_time()
     data = read_data(data_path, events_path)
-    test_results[dir] = train_model(data, output_path, 2**15)
+    test_results[dir] = train_model(data, output_path, 4096)
     elapsed_time = epoch_time() - start_time
     logger.info(test_results[dir])
     logger.info(f'elapsed time for user {dir} was {elapsed_time}')
