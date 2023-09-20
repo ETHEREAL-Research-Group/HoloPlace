@@ -117,6 +117,31 @@ def read_data(data_path, event_path, obs_size=21, acs_size=7, flatten=True, shuf
 
     batches.append((th.Tensor(obs[:-1]).to(device),
                    th.Tensor(obs[1:, :acs_size]).to(device)))
+  if len(batches) == 0:
+    logger.error(
+        'the batch list is empty. this is probably due to the system not detecting collision events...')
+    # raise Exception('ERR_DATA')
+    logger.warning(
+        'the system will continue to train the model but the usability aspect may be affected. setting the minimum datapoint in an episod to 50...')
+    prev_idx = dataset.index[0]
+    print(prev_idx)
+    batches = []
+    first_time = True
+    for i in dataset[dataset['act_pos_x'].isna()].index:
+      if first_time:
+        mask = (dataset.index >= prev_idx) & (dataset.index < i)
+        first_time = False
+      else:
+        mask = (dataset.index > prev_idx) & (dataset.index < i)
+      temp = dataset[mask].copy()
+      obs = temp.values[:, :obs_size].astype(np.float32)
+      acs = temp.values[:, -acs_size:].astype(np.float32)
+      if len(acs[:-1, :]) < 50:
+        logger.warning(
+            'need at least 50 datapoints for each episode. skipping this episode...')
+        continue
+      batches.append(
+          (th.Tensor(obs[:-1]).to(device), th.Tensor(obs[1:, :acs_size]).to(device)))
 
   shuffle(batches)
   if flatten:

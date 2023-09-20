@@ -7,8 +7,10 @@ Welcome to the repository for our paper submission to ACM SUI '23. This README o
 - Scenario 2: `b3f9f8`
 - Scenario 3: `40ad1b`
 
-**Participant 1 ID:** `a19cfd`
-**Participant 2 ID:** `8e5234`
+- **Participant 1 ID:** `a19cfd`
+- **Participant 2 ID:** `8e5234`
+- **Participant 3 ID:** `a4cc93` For this subject, the collision data was not detected due to system error.
+- **Participant 4 ID:** `d79960` For this subject, the collision data was not detected due to system error.
 
 > **Note:** In all scenarios, eye gaze data has been replaced by head gaze data. We disabled eye tracking to eliminate the need for the calibration process.
 

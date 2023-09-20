@@ -405,11 +405,13 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
   # writer.add_figure('Fig/Test', fig)
 
   export(model, output_path)
-  logger.info('training finished')
-  writer.close()
 
   end_result = {'test_loss': {'m': mean_test_loss, 'ci': loss_intervals[1] - mean_test_loss}, 'test_rot_loss': {
       'm': mean_test_rot_diff, 'ci': rot_intervals[1] - mean_test_rot_diff}, 'test_pos_loss': {'m': mean_test_pos_diff, 'ci': pos_intervals[1] - mean_test_pos_diff}}
+  logger.info('end result:')
+  logger.info(end_result)
+  logger.info('training finished')
+  writer.close()
   return end_result
 
 
