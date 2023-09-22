@@ -14,6 +14,8 @@ if __name__ == "__main__":
 
   base_path = './data'
   dir_list = os.listdir(base_path)
+  # To do a test on one dataset modify the below
+  # dir_list = ['d79960']
   logger.info(f'users: {dir_list}')
   # threads = []
   test_results = {}

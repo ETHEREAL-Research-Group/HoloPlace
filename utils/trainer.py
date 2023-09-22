@@ -353,8 +353,8 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
 
   for x, y in test:
     pred = model(x)
-    true_list.append(y.detach().numpy()[0])
-    pred_list.append(pred.detach().numpy()[0])
+    true_list.append(y.detach().cpu().numpy()[0])
+    pred_list.append(pred.detach().cpu().numpy()[0])
 
     test_loss = criterion(pred, y)
     

@@ -12,13 +12,5 @@
     "reportMissingTypeStubs": "none",
     "reportIncompatibleMethodOverride": "none"
   },
-  "python.analysis.diagnosticMode": "openFilesOnly",
-  "python.formatting.autopep8Args": [
-    "--indent-size=2"
-  ],
-  "python.terminal.activateEnvironment": false,
-  "[python]": {
-    "editor.defaultFormatter": "ms-python.autopep8"
-  },
-  "python.formatting.provider": "none"
+  "python.analysis.diagnosticMode": "openFilesOnly"
 }
