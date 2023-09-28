@@ -325,7 +325,7 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
     else:
       counter += 1
 
-    if epoch % 500 == 0:
+    if epoch % 100 == 0:
       export(model, output_path[:-5] + f'-{epoch}.onnx')
 
     if counter > patience:
