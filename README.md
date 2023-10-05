@@ -1,4 +1,4 @@
-# Repository for ACM SUI '23 Paper Submission
+# Repository for ACM IUI '24 Paper Submission
 
 Welcome to the repository for our paper submission to ACM SUI '23. This README outlines the structure and details of our dataset.
 

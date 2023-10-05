@@ -35,7 +35,7 @@ def get_mean(data_path, event_path):
   data = data.iloc[idx_list]
   data.drop(['timestamp', 'act_pos', 'act_rot', 'rif_pos',
             'rif_rot', 'rpa_pos', 'rpa_rot'], axis=1, inplace=True)
-  data[data.columns] = data[data.columns].applymap(
+  data[data.columns] = data[data.columns].map(
       literal_eval, na_action='ignore')
   dataset = pd.DataFrame()
 
@@ -73,7 +73,7 @@ def read_data(data_path, event_path, obs_size=21, acs_size=7, flatten=True, shuf
       data['timestamp'], unit='ms', utc=True).dt.tz_convert(pytz.timezone('US/Mountain'))
   data.set_index(['datetime'], inplace=True)
   data.drop(['timestamp'], axis=1, inplace=True)
-  data[data.columns] = data[data.columns].applymap(
+  data[data.columns] = data[data.columns].map(
       literal_eval, na_action='ignore')
   dataset = pd.DataFrame()
 
@@ -169,6 +169,55 @@ def read_data(data_path, event_path, obs_size=21, acs_size=7, flatten=True, shuf
   logger.info(
       f'train samples: {len(train)} -- val samples: {len(val)} -- test samples: {len(test)}')
   return (train, val, test)
+
+
+def get_data_collection_time(event_path):
+  events = pd.read_csv(event_path)
+  return events[events['event'] == 'target_lost'].iloc[-1]['timestamp'] - events[events['event'] == 'target_found'].iloc[0]['timestamp']
+
+
+def get_tar_pos_stat(dir_path):
+  long_data = pd.read_csv(f'{dir_path}/all_data.csv',
+                          usecols=['timestamp', 'tar_pos'])
+  long_data['datetime'] = pd.to_datetime(
+      long_data['timestamp'], unit='ms', utc=True).dt.tz_convert(pytz.timezone('US/Mountain'))
+  long_data.set_index(['datetime'], inplace=True)
+  long_data.drop(['timestamp'], axis=1, inplace=True)
+
+  events = pd.read_csv(f'{dir_path}/events.csv')
+  events['datetime'] = pd.to_datetime(
+      events['timestamp'], unit='ms', utc=True).dt.tz_convert(pytz.timezone('US/Mountain'))
+
+  data = pd.read_csv(f'{dir_path}/data.csv')
+  data['datetime'] = pd.to_datetime(
+      data['timestamp'], unit='ms', utc=True).dt.tz_convert(pytz.timezone('US/Mountain'))
+  data.set_index(['datetime'], inplace=True)
+  data.drop(['timestamp'], axis=1, inplace=True)
+
+  batches = pd.DataFrame()
+  prev_idx = data.index[0]
+  for j in data[data['act_pos'].isna()].index:
+    event_mask = (events['datetime'] >= prev_idx) & (
+        events['datetime'] < j) & (events['event'] == 'Right IndexTip')
+    if (len(events[event_mask]) == 0):
+      prev_idx = j
+      continue
+    mask = (long_data.index >= prev_idx) & (
+        long_data.index < j) & (~long_data['tar_pos'].isna())
+    batches = pd.concat((batches, long_data[mask]), axis=0)
+    prev_idx = j
+  batches[batches.columns] = batches[batches.columns].map(
+      literal_eval, na_action='ignore')
+  dataset = pd.DataFrame()
+  for col in batches.columns:
+    col_data = batches[col]
+    dataset[f'{col}_x'] = col_data.apply(lambda x: x if not x == x else x[0])
+    dataset[f'{col}_y'] = col_data.apply(lambda x: x if not x == x else x[1])
+    dataset[f'{col}_z'] = col_data.apply(lambda x: x if not x == x else x[2])
+    if col.endswith('rot'):
+      dataset[f'{col}_w'] = col_data.apply(lambda x: x if not x == x else x[3])
+
+  return {'std': np.std(dataset.values*100, axis=0), 'range': np.max(dataset.values*100, axis=0) - np.min(dataset.values*100, axis=0)}
 
 
 if __name__ == '__main__':

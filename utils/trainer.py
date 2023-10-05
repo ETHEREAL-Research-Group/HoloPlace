@@ -291,7 +291,8 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
       pos_diff = position_distance(outputs, y_batch)
       val_pos_diffs.append(pos_diff.item())
     mean_val_loss = sum(val_losses) / len(val_losses)
-    mean_val_rot_diff = sum(val_rot_diffs) / len(val_rot_diffs) if len(val_rot_diffs) > 0 else float('inf')
+    mean_val_rot_diff = sum(
+        val_rot_diffs) / len(val_rot_diffs) if len(val_rot_diffs) > 0 else float('inf')
     mean_val_pos_diff = sum(
         val_pos_diffs) / len(val_pos_diffs) if len(val_pos_diffs) > 0 else float('inf')
     writer.add_scalar(f'Loss/Val', mean_val_loss, epoch)
@@ -357,7 +358,7 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
     pred_list.append(pred.detach().cpu().numpy()[0])
 
     test_loss = criterion(pred, y)
-    
+
     i += 1
     test_losses.append(test_loss.item())
 
@@ -413,6 +414,34 @@ def train_model(data, output_path, num_epochs=4096, loss_fn='mse', mode='flatten
   logger.info('training finished')
   writer.close()
   return end_result
+
+
+def get_acc(true, naive_mean, test_result):
+  naive_rot_diffs = []
+  naive_pos_diffs = []
+  res = {}
+  for y in true:
+    y = th.Tensor(np.expand_dims(y, 0))
+    rot_diff = geodesic_loss(naive_mean, y)
+    naive_rot_diffs.append(rot_diff.item())
+
+    pos_diff = position_distance(naive_mean, y)
+    naive_pos_diffs.append(pos_diff.item())
+
+  rot_intervals = st.t.interval(0.95, len(naive_rot_diffs)-1, loc=th.mean(
+      th.Tensor(naive_rot_diffs)), scale=st.sem(th.Tensor(naive_rot_diffs)))
+  mean_test_rot_diff = sum(naive_rot_diffs) / len(naive_rot_diffs)
+  pos_intervals = st.t.interval(0.95, len(naive_pos_diffs)-1, loc=th.mean(
+      th.Tensor(naive_pos_diffs)), scale=st.sem(th.Tensor(naive_pos_diffs)))
+  mean_test_pos_diff = sum(naive_pos_diffs) / len(naive_pos_diffs)
+
+  res['naive'] = {'pos_loss': {'m': mean_test_pos_diff * 100, 'ci': (pos_intervals[1] - mean_test_pos_diff) * 100},
+                  'rot_loss': {'m': np.rad2deg(mean_test_rot_diff), 'ci': np.rad2deg(rot_intervals[1] - mean_test_rot_diff)}}
+
+  res['BC'] = {'pos_loss': {'m': test_result['test_pos_loss']['m']*100, 'ci': test_result['test_pos_loss']['ci']*100},
+               'rot_loss': {'m': np.rad2deg(test_result['test_rot_loss']['m']), 'ci': np.rad2deg(test_result['test_rot_loss']['ci'])}}
+  
+  return res
 
 
 if __name__ == '__main__':

@@ -2,7 +2,7 @@
 if __name__ == "__main__":
   import logging
   import os
-  import matplotlib.pyplot as plt
+  # import matplotlib.pyplot as plt
   from time import time as epoch_time
   # import threading
   logging.basicConfig(
@@ -15,7 +15,7 @@ if __name__ == "__main__":
   base_path = './data'
   dir_list = os.listdir(base_path)
   # To do a test on one dataset modify the below
-  # dir_list = ['d79960']
+  dir_list = ['1c54d7', 'b3f9f8', '40ad1b', 'a19cfd', '8e5234']
   logger.info(f'users: {dir_list}')
   # threads = []
   test_results = {}
@@ -46,25 +46,43 @@ if __name__ == "__main__":
 
   logger.info(
       f'average training time was {sum(elapsed_times)/len(elapsed_times)}')
+  
+  # For getting baseline accuracy
+  from utils.data import get_mean, get_tar_pos_stat
+  from utils.trainer import get_acc
+  import numpy as np
+  
+  acc_results = {}
+  target_pos_stat = {}
+  for i, dir in enumerate(dir_list):
+    naive_mean = get_mean(f'./data/{dir}/data.csv', f'./data/{dir}/events.csv')
+    true = np.load(f'./data/{dir}/output/true.npy')
+    acc_results[dir] = get_acc(true, naive_mean, test_results[dir])
+    target_pos_stat[dir] = get_tar_pos_stat(f'./data/{dir}')
+  logger.info('accuracy results:')
+  logger.info(acc_results)
+  logger.info('target position stat:')
+  logger.info(target_pos_stat)
 
-  fig = plt.figure(figsize=(10, 5), dpi=300)
-  ax = plt.subplot(111)
 
-  ax.set_xticks([i for i in range(len(dir_list))])
-  ax.set_xticklabels([i for i in dir_list])
-  ax.set_ylabel('Geodesic Loss in Radians')
-  ax.set_xlabel('Subject')
-  ax.errorbar([i for i in range(len(dir_list))], [test_results[i]['test_rot_loss']['m'] for i in dir_list], yerr=[
-              test_results[i]['test_rot_loss']['ci'] for i in dir_list], marker="o", capsize=2, markersize=4, ls='none')
-  plt.savefig('rot_loss.png', transparent=True)
+  # fig = plt.figure(figsize=(10, 5), dpi=300)
+  # ax = plt.subplot(111)
 
-  fig = plt.figure(figsize=(10, 5), dpi=300)
-  ax = plt.subplot(111)
+  # ax.set_xticks([i for i in range(len(dir_list))])
+  # ax.set_xticklabels([i for i in dir_list])
+  # ax.set_ylabel('Geodesic Loss in Radians')
+  # ax.set_xlabel('Subject')
+  # ax.errorbar([i for i in range(len(dir_list))], [test_results[i]['test_rot_loss']['m'] for i in dir_list], yerr=[
+  #             test_results[i]['test_rot_loss']['ci'] for i in dir_list], marker="o", capsize=2, markersize=4, ls='none')
+  # plt.savefig('rot_loss.png', transparent=True)
 
-  ax.set_xticks([i for i in range(len(dir_list))])
-  ax.set_xticklabels([i for i in dir_list])
-  ax.set_ylabel('L2 Loss in m')
-  ax.set_xlabel('Subject')
-  ax.errorbar([i for i in range(len(dir_list))], [test_results[i]['test_pos_loss']['m'] for i in dir_list], yerr=[
-              test_results[i]['test_pos_loss']['ci'] for i in dir_list], marker="o", capsize=2, markersize=4, ls='none')
-  plt.savefig('pos_loss.png', transparent=True)
+  # fig = plt.figure(figsize=(10, 5), dpi=300)
+  # ax = plt.subplot(111)
+
+  # ax.set_xticks([i for i in range(len(dir_list))])
+  # ax.set_xticklabels([i for i in dir_list])
+  # ax.set_ylabel('L2 Loss in m')
+  # ax.set_xlabel('Subject')
+  # ax.errorbar([i for i in range(len(dir_list))], [test_results[i]['test_pos_loss']['m'] for i in dir_list], yerr=[
+  #             test_results[i]['test_pos_loss']['ci'] for i in dir_list], marker="o", capsize=2, markersize=4, ls='none')
+  # plt.savefig('pos_loss.png', transparent=True)

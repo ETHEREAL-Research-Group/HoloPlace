@@ -13,3 +13,5 @@ old
 Figures
 plot*
 *.png
+temp.py
+not_used/*
