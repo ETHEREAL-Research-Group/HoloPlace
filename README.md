@@ -9,8 +9,13 @@ Welcome to the repository for our paper submission to ACM SUI '23. This README o
 
 - **Participant 1 ID:** `a19cfd`
 - **Participant 2 ID:** `8e5234`
-- **Participant 3 ID:** `a4cc93` For this subject, the collision data was not detected due to system error.
-- **Participant 4 ID:** `d79960` For this subject, the collision data was not detected due to system error.
+
+**Participant IDs for the updated app with the gem game at the end and lowered threshold for data collection**
+- **Participant 3 ID** `8d418f` Colleced about 50% data but subject did not test the system at the end
+- **Participant 4 ID** `9ab3fe` Collected 100% data and subject tested out the gems at the end
+- **Participant 5 ID** `e75dd7` Collected 100% data and subject tested out the gems at the end and attempted spelling
+- **Participant 6 ID** `347193` Collected 100% data and subject tested out the gems at the end
+
 
 > **Note:** In all scenarios, eye gaze data has been replaced by head gaze data. We disabled eye tracking to eliminate the need for the calibration process.
 
