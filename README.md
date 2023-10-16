@@ -15,6 +15,7 @@ Welcome to the repository for our paper submission to ACM SUI '23. This README o
 - **Participant 4 ID** `9ab3fe` Collected 100% data and subject tested out the gems at the end
 - **Participant 5 ID** `e75dd7` Collected 100% data and subject tested out the gems at the end and attempted spelling
 - **Participant 6 ID** `347193` Collected 100% data and subject tested out the gems at the end
+- **Participant 7 ID** `0edbb4` Collected ~15% data and subject tested out the gems at the end 
 
 
 > **Note:** In all scenarios, eye gaze data has been replaced by head gaze data. We disabled eye tracking to eliminate the need for the calibration process.
