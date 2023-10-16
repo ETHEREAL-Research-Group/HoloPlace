@@ -217,7 +217,7 @@ def get_tar_pos_stat(dir_path):
     if col.endswith('rot'):
       dataset[f'{col}_w'] = col_data.apply(lambda x: x if not x == x else x[3])
 
-  return {'std': np.std(dataset.values*100, axis=0), 'range': np.max(dataset.values*100, axis=0) - np.min(dataset.values*100, axis=0)}
+  return {'std': np.std(dataset.values*100, axis=0), 'range': np.max(dataset.values*100, axis=0) - np.min(dataset.values*100, axis=0)}, dataset
 
 
 if __name__ == '__main__':
