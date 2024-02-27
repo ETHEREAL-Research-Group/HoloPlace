@@ -1,6 +1,8 @@
 # Repository for ACM IUI '24 Paper Submission
 
-Welcome to the repository for our paper submission to ACM SUI '23. This README outlines the structure and details of our dataset.
+This is the corresponding repository for the paper published in ACM IUI24: [https://doi.org/10.1145/3640543.3645153]. Please cite the paper if you intend to use the data or the code.
+
+This README outlines the structure and details of our dataset.
 
 **Scenario IDs:**
 - Scenario 1: `1c54d7`
