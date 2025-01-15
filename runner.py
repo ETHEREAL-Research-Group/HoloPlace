@@ -15,7 +15,9 @@ if __name__ == "__main__":
   base_path = './data'
   dir_list = os.listdir(base_path)
   # To do a test on one dataset modify the below
-  dir_list = ['1c54d7', 'b3f9f8', '40ad1b', 'a19cfd', '8e5234']
+  # dir_list = ['1c54d7', 'b3f9f8', '40ad1b', 'a19cfd', '8e5234'] # prev paper
+  dir_list = ['6167a0']
+
   logger.info(f'users: {dir_list}')
   # threads = []
   test_results = {}
@@ -48,7 +50,7 @@ if __name__ == "__main__":
       f'average training time was {sum(elapsed_times)/len(elapsed_times)}')
   
   # For getting baseline accuracy
-  from utils.data import get_mean, get_tar_pos_stat
+  from utils.data import get_mean, get_target_stat
   from utils.trainer import get_acc
   import numpy as np
   
@@ -58,7 +60,7 @@ if __name__ == "__main__":
     naive_mean = get_mean(f'./data/{dir}/data.csv', f'./data/{dir}/events.csv')
     true = np.load(f'./data/{dir}/output/true.npy')
     acc_results[dir] = get_acc(true, naive_mean, test_results[dir])
-    target_pos_stat[dir] = get_tar_pos_stat(f'./data/{dir}')
+    target_pos_stat[dir] = get_target_stat(f'./data/{dir}')
   logger.info('accuracy results:')
   logger.info(acc_results)
   logger.info('target position stat:')

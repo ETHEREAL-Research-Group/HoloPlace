@@ -1,6 +1,6 @@
-# Repository for ACM IUI '24 Paper Submission
+# Repository for ACM TiiS Paper Submission
 
-This is the corresponding repository for the paper published in ACM IUI24: [https://doi.org/10.1145/3640543.3645153]. Please cite the paper if you intend to use the data or the code.
+This is the corresponding repository for the extended version of our paper published in ACM IUI24: [https://doi.org/10.1145/3640543.3645153]. For the IUI24 repository please refere to this [link](https://github.com/ETHEREAL-Research-Group/HoloPlace/tree/deploy-custom). Please cite the paper if you intend to use the data or the code.
 
 This README outlines the structure and details of our dataset.
 
@@ -12,12 +12,13 @@ This README outlines the structure and details of our dataset.
 - **Participant 1 ID:** `a19cfd`
 - **Participant 2 ID:** `8e5234`
 
-**Participant IDs for the updated app with the gem game at the end and lowered threshold for data collection**
-- **Participant 3 ID** `8d418f` Colleced about 50% data but subject did not test the system at the end
-- **Participant 4 ID** `9ab3fe` Collected 100% data and subject tested out the gems at the end
-- **Participant 5 ID** `e75dd7` Collected 100% data and subject tested out the gems at the end and attempted spelling
-- **Participant 6 ID** `347193` Collected 100% data and subject tested out the gems at the end
-- **Participant 7 ID** `0edbb4` Collected ~15% data and subject tested out the gems at the end 
+**New Participant IDs**
+- **Participant 3 ID** `8d418f`
+- **Participant 4 ID** `9ab3fe`
+- **Participant 5 ID** `e75dd7`
+- **Participant 6 ID** `347193`
+- **Participant 7 ID** `0edbb4`
+- **Participant 8 ID** `6167a0`
 
 
 > **Note:** In all scenarios, eye gaze data has been replaced by head gaze data. We disabled eye tracking to eliminate the need for the calibration process.

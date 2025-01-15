@@ -176,9 +176,55 @@ def get_data_collection_time(event_path):
   return events[events['event'] == 'target_lost'].iloc[-1]['timestamp'] - events[events['event'] == 'target_found'].iloc[0]['timestamp']
 
 
-def get_tar_pos_stat(dir_path):
+def normalize(q):
+  return q / np.linalg.norm(q)
+
+
+def normalize_quaternions_in_df(df):
+  magnitudes = np.sqrt((df ** 2).sum(axis=1))
+  normalized_df = df.div(magnitudes, axis=0)
+  return normalized_df
+
+
+def mean_quaternion(quaternions):
+  q_sum = np.sum(quaternions, axis=0)
+  return normalize(q_sum)
+
+
+def geodesic_angles(quaternions, mean_q):
+  angles = []
+  for q in quaternions:
+    # angle = 2 * np.arccos(np.clip(np.abs(np.dot(q, mean_q)), -1.0, 1.0))
+    angle = np.abs(np.arccos(2 * np.dot(normalize(q), mean_q)**2 - 1))
+    angles.append(angle)
+  return np.array(angles)
+
+
+def get_rotation_angle(quaternion):
+  _, _, _, w = quaternion
+  w = np.clip(w, -1.0, 1.0)
+  theta = 2 * np.arccos(w)
+  return theta
+
+
+def mean_quaternion_eigenvalue(quaternions):
+  quaternions = np.array([q / np.linalg.norm(q) for q in quaternions])
+  
+  covariance_matrix = np.zeros((4, 4))
+  for q in quaternions:
+      covariance_matrix += np.outer(q, q)
+  covariance_matrix /= len(quaternions)
+  
+  eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
+  
+  mean_q = eigenvectors[:, np.argmax(eigenvalues)]
+  
+  return mean_q / np.linalg.norm(mean_q)
+
+
+def get_target_stat(dir_path):
   long_data = pd.read_csv(f'{dir_path}/all_data.csv',
-                          usecols=['timestamp', 'tar_pos'])
+                          usecols=['timestamp', 'cam_pos', 'cam_rot'])
   long_data['datetime'] = pd.to_datetime(
       long_data['timestamp'], unit='ms', utc=True).dt.tz_convert(pytz.timezone('US/Mountain'))
   long_data.set_index(['datetime'], inplace=True)
@@ -203,8 +249,8 @@ def get_tar_pos_stat(dir_path):
       prev_idx = j
       continue
     mask = (long_data.index >= prev_idx) & (
-        long_data.index < j) & (~long_data['tar_pos'].isna())
-    batches = pd.concat((batches, long_data[mask]), axis=0)
+        long_data.index < j) & (~long_data['cam_pos'].isna())
+    batches = pd.concat((batches, long_data.loc[mask, ['cam_pos']]), axis=0)
     prev_idx = j
   batches[batches.columns] = batches[batches.columns].map(
       literal_eval, na_action='ignore')
@@ -217,7 +263,126 @@ def get_tar_pos_stat(dir_path):
     if col.endswith('rot'):
       dataset[f'{col}_w'] = col_data.apply(lambda x: x if not x == x else x[3])
 
-  return {'std': np.std(dataset.values*100, axis=0), 'range': np.max(dataset.values*100, axis=0) - np.min(dataset.values*100, axis=0)}, dataset
+  batches_rot = pd.DataFrame()
+  prev_idx = data.index[0]
+  for j in data[data['act_rot'].isna()].index:
+    event_mask = (events['datetime'] >= prev_idx) & (
+        events['datetime'] < j) & (events['event'] == 'Right IndexTip')
+    if (len(events[event_mask]) == 0):
+      prev_idx = j
+      continue
+    mask = (long_data.index >= prev_idx) & (
+        long_data.index < j) & (~long_data['cam_rot'].isna())
+    batches_rot = pd.concat(
+        (batches_rot, long_data.loc[mask, ['cam_rot']]), axis=0)
+    prev_idx = j
+
+  batches_rot[batches_rot.columns] = batches_rot[batches_rot.columns].map(
+      literal_eval, na_action='ignore')
+
+  dataset_rot = pd.DataFrame()
+  for col in batches_rot.columns:
+    col_data = batches_rot[col]
+    dataset_rot[f'{col}_x'] = col_data.apply(
+        lambda x: x if not x == x else x[0])
+    dataset_rot[f'{col}_y'] = col_data.apply(
+        lambda x: x if not x == x else x[1])
+    dataset_rot[f'{col}_z'] = col_data.apply(
+        lambda x: x if not x == x else x[2])
+    if col.endswith('rot'):
+      dataset_rot[f'{col}_w'] = col_data.apply(
+          lambda x: x if not x == x else x[3])
+
+  dataset_rot = normalize_quaternions_in_df(dataset_rot)
+  mean_q = mean_quaternion_eigenvalue(dataset_rot.values)
+  angles = geodesic_angles(dataset_rot.values, mean_q)
+
+  distances = np.sqrt(np.sum(dataset.values**2, axis=1))
+  mean_distance = np.mean(distances)
+  std_distance = np.std(distances)
+
+  # For getting the target stat
+  # 'position_xyz': {'std': np.std(dataset.values*100, axis=0), 'range': np.max(dataset.values*100, axis=0) - np.min(dataset.values*100, axis=0)}
+
+  return {'position': {'std': std_distance, 'mean': mean_distance},
+          'rotation': {'std': np.std(angles), 'mean': get_rotation_angle(mean_q)}}, dataset
+
+
+def get_action_stat(dir_path):
+  events = pd.read_csv(f'{dir_path}/events.csv')
+  events['datetime'] = pd.to_datetime(
+      events['timestamp'], unit='ms', utc=True).dt.tz_convert(pytz.timezone('US/Mountain'))
+
+  data = pd.read_csv(f'{dir_path}/data.csv')
+  data['datetime'] = pd.to_datetime(
+      data['timestamp'], unit='ms', utc=True).dt.tz_convert(pytz.timezone('US/Mountain'))
+  data.set_index(['datetime'], inplace=True)
+  data.drop(['timestamp'], axis=1, inplace=True)
+
+  batches = pd.DataFrame()
+  prev_idx = data.index[0]
+  for j in data[data['act_pos'].isna()].index:
+    event_mask = (events['datetime'] >= prev_idx) & (
+        events['datetime'] < j) & (events['event'] == 'Right IndexTip')
+    if (len(events[event_mask]) == 0):
+      prev_idx = j
+      continue
+    mask = (data.index >= prev_idx) & (
+        data.index < j) & (~data['cam_pos'].isna())
+    batches = pd.concat((batches, data.loc[mask, ['cam_pos']]), axis=0)
+    prev_idx = j
+  batches[batches.columns] = batches[batches.columns].map(
+      literal_eval, na_action='ignore')
+  dataset = pd.DataFrame()
+  for col in batches.columns:
+    col_data = batches[col]
+    dataset[f'{col}_x'] = col_data.apply(lambda x: x if not x == x else x[0])
+    dataset[f'{col}_y'] = col_data.apply(lambda x: x if not x == x else x[1])
+    dataset[f'{col}_z'] = col_data.apply(lambda x: x if not x == x else x[2])
+    if col.endswith('rot'):
+      dataset[f'{col}_w'] = col_data.apply(lambda x: x if not x == x else x[3])
+
+  batches_rot = pd.DataFrame()
+  prev_idx = data.index[0]
+  for j in data[data['act_rot'].isna()].index:
+    event_mask = (events['datetime'] >= prev_idx) & (
+        events['datetime'] < j) & (events['event'] == 'Right IndexTip')
+    if (len(events[event_mask]) == 0):
+      prev_idx = j
+      continue
+    mask = (data.index >= prev_idx) & (
+        data.index < j) & (~data['cam_rot'].isna())
+    batches_rot = pd.concat(
+        (batches_rot, data.loc[mask, ['cam_rot']]), axis=0)
+    prev_idx = j
+
+  batches_rot[batches_rot.columns] = batches_rot[batches_rot.columns].map(
+      literal_eval, na_action='ignore')
+
+  dataset_rot = pd.DataFrame()
+  for col in batches_rot.columns:
+    col_data = batches_rot[col]
+    dataset_rot[f'{col}_x'] = col_data.apply(
+        lambda x: x if not x == x else x[0])
+    dataset_rot[f'{col}_y'] = col_data.apply(
+        lambda x: x if not x == x else x[1])
+    dataset_rot[f'{col}_z'] = col_data.apply(
+        lambda x: x if not x == x else x[2])
+    if col.endswith('rot'):
+      dataset_rot[f'{col}_w'] = col_data.apply(
+          lambda x: x if not x == x else x[3])
+
+  dataset_rot = normalize_quaternions_in_df(dataset_rot)
+  mean_q = mean_quaternion_eigenvalue(dataset_rot.values)
+  angles = geodesic_angles(dataset_rot.values, mean_q)
+
+  distances = np.sqrt(np.sum(dataset.values**2, axis=1))
+  mean_distance = np.mean(distances)
+  std_distance = np.std(distances)
+
+  # 'position_xyz': {'std': np.std(dataset.values*100, axis=0), 'range': np.max(dataset.values*100, axis=0) - np.min(dataset.values*100, axis=0)}, 
+  return {'position': {'std': std_distance, 'mean': mean_distance},
+          'rotation': {'std': np.std(angles), 'mean': get_rotation_angle(mean_q)}}, dataset
 
 
 if __name__ == '__main__':
