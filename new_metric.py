@@ -78,6 +78,7 @@ def matrix_inverse(T):
 
 
 # region Letterboard_positions
+# These are hardcoded here using the board_visualizer script in the letterboard layouts folder
 
 positions_alphaboard = [
     {'Character': 'A', 'position': [-0.1197, 0, 0.0882]},
@@ -176,7 +177,6 @@ def get_selection_accuracy(user_id, _letterboard_positions):
   
 
   right_index_timestamps.sort()
-  # print(right_index_timestamps)
   data_df["timestamp"] = data_df["timestamp"].astype(int)
   all_data_df["timestamp"] = all_data_df["timestamp"].astype(int)
   data_df.dropna(inplace=True)
@@ -192,38 +192,22 @@ def get_selection_accuracy(user_id, _letterboard_positions):
 
   data_df['rif_pos_y'] = data_df['rif_pos'].apply(lambda pos: pos[1])
   data_df['rif_pos_y_velocity'] = data_df['rif_pos_y'].diff() / data_df['timestamp'].diff()
-  upper_boundary = 0.01
-  lower_boundary = 0.005
-  # Iterate through the rows
-  collision_timestamps = []
-  state = None
-  for i in range(len(data_df)):
-    y = data_df.loc[i, 'rif_pos_y']
-    timestamp = data_df.loc[i, 'timestamp']
+  # upper_boundary = 0.01
+  # lower_boundary = 0.005
+  # collision_timestamps = []
+  # state = None
+  # for i in range(len(data_df)):
+  #   y = data_df.loc[i, 'rif_pos_y']
+  #   timestamp = data_df.loc[i, 'timestamp']
     
-    if state is None and y > upper_boundary:
-      # Transition to "above" state
-      state = "above"
+  #   if state is None and y > upper_boundary:
+  #     # Transition to "above" state
+  #     state = "above"
     
-    elif state == "above" and y < lower_boundary:
-      # Collision detected when transitioning from "above" to "below"
-      collision_timestamps.append(timestamp)
-      state = None  # Reset state after detecting a collision
-  # data_df['above_upper'] = data_df['rif_pos_y'] > upper_boundary
-  # data_df['below_lower'] = data_df['rif_pos_y'] < lower_boundary
-  # collisions = data_df[(data_df['above_upper'].shift(1) == True) & (data_df['below_lower'] == True)]
-  # # collisions = collisions[collisions['rif_pos_y_velocity'] < 0]
-  # collision_timestamps = collisions['timestamp'].tolist()
-  # collision_timestamps.sort()
-  # print(f'collision_ts_list = {collision_timestamps}')
-
-  # threshold = 0.005  # cm
-  # data_df['rif_pos_y_sign'] = data_df['rif_pos_y'] > threshold  # True if positive, False otherwise
-  # transitions = data_df[(data_df['rif_pos_y_sign'].shift(1) == True) & (data_df['rif_pos_y_sign'] == False)]
-
-  # transition_timestamps = transitions['timestamp'].tolist()
-  # transition_timestamps.sort()
-  # raise Exception()
+  #   elif state == "above" and y < lower_boundary:
+  #     # Collision detected when transitioning from "above" to "below"
+  #     collision_timestamps.append(timestamp)
+  #     state = None  # Reset state after detecting a collision
 
   all_data_df["rif_pos"] = all_data_df["rif_pos"].map(
       literal_eval, na_action='ignore')
@@ -241,27 +225,6 @@ def get_selection_accuracy(user_id, _letterboard_positions):
   selection_accuracy = []
 
   for ts in right_index_timestamps:
-  # for ts in collision_timestamps:
-    #region TEMP
-    # # entry = data_df[data_df['timestamp'] == ts].iloc[0]
-    # time_differences = (data_df["timestamp"] - ts).abs()
-
-    # closest_idx = time_differences.idxmin()
-
-    # closest_timestamp = data_df.loc[closest_idx, "timestamp"]
-    # entry = data_df.iloc[closest_idx]
-    # distances = []
-    # for _, letter in letterboard_positions.iterrows():
-    #   letter_pos = np.array(letter["position"])
-    #   distance = get_xz_dist(entry['rif_pos'], letter_pos)
-    #   distances.append((letter["Character"], distance, entry['rif_pos'][1]))
-
-    # closest_letter = min(distances, key=lambda x: x[1])
-    # print(
-    #     f"Closest letter {closest_letter[0]} with distance {closest_letter[1]:.4f}, y of hand is {closest_letter[2]}")
-    # print('-'*100)
-    # continue
-    #endregion
     time_differences = (data_df["timestamp"] - ts).abs()
 
     closest_idx = time_differences.idxmin()
@@ -317,15 +280,6 @@ def get_selection_accuracy(user_id, _letterboard_positions):
     finger_pos_in_predicted_target_local, finger_rot_in_predicted_target_local = extract_position_rotation(
         finger_in_predicted_target_local)
 
-    # print(f"finger world = {all_data_entry['rif_pos']}")
-    # print(f"finger in target local = {data_entry['rif_pos']}")
-    # print(f"finger in predicted target local = {finger_pos_in_predicted_target_local}")
-    # print(f"finger in world but calculated = {finger_pos_calculate}")
-    # print(f"tar pos = {all_data_entry['tar_pos']}")
-    # print(f"predicted tar pos = {predicted_tar_pos}")
-    # print(f"pos error from before = {position_distance(true_entry, pred_entry):.2f}")
-    # print(f"new pos error = {position_distance(all_data_entry['tar_pos'], predicted_tar_pos):.2f}")
-
     distances = []
     distances_pred = []
     
@@ -356,23 +310,20 @@ def get_selection_accuracy(user_id, _letterboard_positions):
 
 base_path = './data'
 dir_list = os.listdir(base_path)
-# dir_list = ['ahmad']
-# dir_list = ['6167a0']
 selction_accuracies = []
 print(dir_list)
 user_board = {
     '1c54d7': positions_pinkboard,  # scenario 1
     'b3f9f8': positions_pinkboard,  # scenario 2
     '40ad1b': positions_pinkboard,  # scenario 3
-    'a19cfd': positions_pinkboard,  # [NOT SURE] participant 1
+    'a19cfd': positions_pinkboard,  # participant 1
     '8e5234': positions_pinkboard,  # participant 2
     '8d418f': positions_alphaboard,  # participant 3
     '9ab3fe': positions_alphaboard,  # participant 4
     'e75dd7': positions_alphaboard,  # participant 5
     '347193': positions_alphaboard,  # participant 6
     '0edbb4': positions_pinkboard,  # participant 7
-    '6167a0': positions_alphaboard,  # [NOT SURE] participant 8
-    # 'ahmad': positions_pinkboard,
+    '6167a0': positions_alphaboard,  # participant 8
 }
 
 participant_map = {
@@ -405,15 +356,12 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import ttest_rel
-from scipy.stats import spearmanr, linregress, pearsonr
-from pymannkendall import original_test  # Install with pip install pymannkendall
+from scipy.stats import linregress, pearsonr
+from pymannkendall import original_test
 import matplotlib.pyplot as plt
+mpl.rcParams['font.size'] = 20
 
 results_df = pd.read_csv('Results.csv')
-
-t_stat, p_value = ttest_rel(results_df['Data'], results_df['Selection Accuracy (percentage)'])
-
-print(f"Paired t-test result: t-statistic = {t_stat:.4f}, p-value = {p_value:.4f}, {len(results_df['Data'].dropna())}")
 
 correlation, p_value = pearsonr(results_df['Data'], results_df['Selection Accuracy (percentage)'])
 print("Pearson correlation:", correlation)
@@ -423,118 +371,85 @@ results_df = results_df.sort_values(by="Data")
 
 x = results_df["Data"]
 y = results_df["Selection Accuracy (percentage)"]
-# 1. Spearman Correlation
-spearman_corr, spearman_pval = spearmanr(x, y)
 
-# 2. Linear Regression
 linreg = linregress(x, y)
 
-# 3. Mann-Kendall Test
-mk_test = original_test(y)
 
 # Print statistical results
-print(f"Spearman Correlation: {spearman_corr:.2f}, p-value: {spearman_pval:.4f}")
 print(f"Linear Regression Slope: {linreg.slope:.4f}, Intercept: {linreg.intercept:.2f}, p-value: {linreg.pvalue:.4f}")
-print(f"Mann-Kendall Test: Trend = {mk_test.trend}, p-value = {mk_test.p:.4f}")
 
 # Plotting with Linear Regression Line
-plt.figure(figsize=(10, 6))
+plt.figure(figsize=(10, 6), dpi=300)
 plt.scatter(x, y, color="blue")
 participants = results_df["Participant"].unique()
-colors = plt.cm.tab10.colors  # Use a colormap for colors
-markers = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', '<', '>', '.']  # Define marker styles
 
 for i, participant in enumerate(participants):
   participant_data = results_df[results_df["Participant"] == participant]
   plt.scatter(
       participant_data["Data"], 
       participant_data["Selection Accuracy (percentage)"],
-      label=f"{participant}",
-      color=colors[i % len(colors)],
-      marker=markers[i % len(markers)],
-      s=100,  # Size of the marker
-      edgecolor='black'
+      color='orange' if participant_data['Participant'].values[0] == 'Participant 3' else 'b',
+      s=100,
   )
 
-# First legend for participants (scatter points)
 scatter_legend = plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), borderaxespad=0.)
-plt.gca().add_artist(scatter_legend)  # Add the first legend manually to the plot
+plt.gca().add_artist(scatter_legend) 
 
 plt.plot(x, linreg.intercept + linreg.slope * x, color="red", label="Linear Regression Line")
 plt.xlabel("Number of Data Samples")
 plt.ylabel("Selection Accuracy (%)")
 
-# Highlight the target threshold
-target_accuracy = 80  # Define the target accuracy
+target_accuracy = 80 
 threshold_data = results_df[results_df["Selection Accuracy (percentage)"] >= target_accuracy]["Data"].min()
 
 plt.axhline(y=target_accuracy, color="green", linestyle="--", label=f"Target Accuracy: {target_accuracy}%")
 plt.axvline(x=7481, color="orange", linestyle="--", label=f"Threshold Data: {7481}")
 
-# Second legend for the regression line and other elements
-handles, labels = plt.gca().get_legend_handles_labels()
-line_legend = plt.legend(handles[-3:], labels[-3:], loc="upper left", bbox_to_anchor=(1.05, 0.2), borderaxespad=0.)
-
 plt.grid(True)
+plt.legend()
 plt.tight_layout()
 plt.savefig(f'plots/selection_accuracy.png', transparent=True)
 plt.show()
 
 #%%
 plt.figure(figsize=(10, 6))
-plt.plot(x, results_df["Positional Error (cm)"], color="blue")
 participants = results_df["Participant"].unique()
-colors = plt.cm.tab10.colors  # Use a colormap for colors
-markers = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', '<', '>', '.']  # Define marker styles
 
-for i, participant in enumerate(participants):
-  participant_data = results_df[results_df["Participant"] == participant]
-  plt.scatter(
-      participant_data["Data"], 
-      participant_data["Positional Error (cm)"],
-      label=f"{participant}",
-      color=colors[i % len(colors)],
-      marker=markers[i % len(markers)],
-      s=100,  # Size of the marker
+plt.scatter(
+      results_df["Data"], 
+      results_df["Positional Error (cm)"],
+      s=100,
       edgecolor='black'
   )
-scatter_legend = plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), borderaxespad=0.)
-plt.gca().add_artist(scatter_legend)  # Add the first legend manually to the plot
+linreg = linregress(results_df["Data"], results_df["Positional Error (cm)"])
+
+plt.plot(x, linreg.intercept + linreg.slope * x, color="red", label="Linear Regression Line")
 
 plt.axvline(x=7481, color="orange", linestyle="--", label=f"Threshold Data: {7481}")
-handles, labels = plt.gca().get_legend_handles_labels()
-line_legend = plt.legend(handles[-1:], labels[-1:], loc="upper left", bbox_to_anchor=(1.05, 0.2), borderaxespad=0.)
 plt.xlabel("Number of Data Samples")
 plt.ylabel("Positional Error (cm)")
 
+plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.savefig(f'plots/position_error_data.png', transparent=True)
 plt.show()
 
-plt.figure(figsize=(10, 6))
-plt.plot(x, results_df["Rotational Error (deg)"], color="blue")
+plt.figure(figsize=(10, 6), dpi=300)
 participants = results_df["Participant"].unique()
-colors = plt.cm.tab10.colors  # Use a colormap for colors
-markers = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', '<', '>', '.']  # Define marker styles
 
-for i, participant in enumerate(participants):
-  participant_data = results_df[results_df["Participant"] == participant]
-  plt.scatter(
-      participant_data["Data"], 
-      participant_data["Rotational Error (deg)"],
-      label=f"{participant}",
-      color=colors[i % len(colors)],
-      marker=markers[i % len(markers)],
-      s=100,  # Size of the marker
+plt.scatter(
+      results_df["Data"], 
+      results_df["Rotational Error (deg)"],
+      s=100,
       edgecolor='black'
   )
-scatter_legend = plt.legend(loc="upper left", bbox_to_anchor=(1.05, 1), borderaxespad=0.)
-plt.gca().add_artist(scatter_legend)  # Add the first legend manually to the plot
 
 plt.axvline(x=7481, color="orange", linestyle="--", label=f"Threshold Data: {7481}")
-handles, labels = plt.gca().get_legend_handles_labels()
-line_legend = plt.legend(handles[-1:], labels[-1:], loc="upper left", bbox_to_anchor=(1.05, 0.2), borderaxespad=0.)
+linreg = linregress(results_df["Data"], results_df["Rotational Error (deg)"])
+plt.plot(x, linreg.intercept + linreg.slope * x, color="red", label="Linear Regression Line")
+
+plt.legend()
 plt.xlabel("Number of Data Samples")
 plt.ylabel("Rotational Error (deg)")
 
@@ -548,24 +463,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import matplotlib as mpl
-
-data = pd.read_csv('camera_before_after.csv')
-# Data
-
-labels = data['Participant'].values
-before_position_mean = data['Before Camera Position Mean'].values * 100 
-before_position_sd = data['Before Camera Position SD'].values * 100 
-before_rotation_mean = data['Before Camera Rotation Mean'].values * (180.0/np.pi) 
-before_rotation_sd = data['Before Camera Rotation Mean'].values * (180.0/np.pi)
-
-after_position_mean = data['After Camera Position Mean'].values * 100 
-after_position_sd = data['After Camera Position SD'].values * 100 
-after_rotation_mean = data['After Camera Rotation Mean'].values * (180.0/np.pi) 
-after_rotation_sd = data['After Camera Rotation Mean'].values * (180.0/np.pi)
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 
 # Load the data
 data = pd.read_csv('camera_before_after.csv')
@@ -585,16 +482,15 @@ before_rotation_sd = data['Before Camera Rotation SD'].values * (180.0 / np.pi)
 after_rotation_mean = data['After Camera Rotation Mean'].values * (180.0 / np.pi) 
 after_rotation_sd = data['After Camera Rotation SD'].values * (180.0 / np.pi)
 
-mpl.rcParams['font.size'] = 16
 
 # Plot position (mean with error bars)
-plt.figure(figsize=(10, 6))
-plt.errorbar(x - 0.2, before_position_mean, yerr=before_position_sd, fmt='o', label='Before Transformation', capsize=5, color='blue')
-plt.errorbar(x + 0.2, after_position_mean, yerr=after_position_sd, fmt='o', label='After Transformation', capsize=5, color='orange')
+plt.figure(figsize=(10, 6), dpi=300)
+plt.errorbar(x - 0.1, before_position_mean, yerr=before_position_sd, fmt='o', label='In World Frame of Reference', capsize=4, color='blue')
+plt.errorbar(x + 0.1, after_position_mean, yerr=after_position_sd, fmt='o', label='In Target\'s Frame of Reference', capsize=4, color='orange')
 plt.xlabel('Experiment')
-plt.ylabel('Position Mean and SD (cm)')
+plt.ylabel('Distance Mean and SD (cm)')
 plt.legend()
-plt.xticks(x, labels, rotation=45)
+plt.xticks(x, [l[0]+l[-1] for l in labels])
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.tight_layout()
 plt.savefig(f'plots/camera_before_after.png', transparent=True)
@@ -618,5 +514,3 @@ from scipy.stats import ttest_rel
 
 stat, p_value = ttest_rel(before_rotation_sd, after_rotation_sd)
 print(f"Paired t-test: t = {stat:.2f}, p = {p_value:.4f}")
-
-#%%

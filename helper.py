@@ -57,12 +57,12 @@ for i, dir in enumerate(dir_list):
   naive_mean = get_mean(f'./data/{dir}/data.csv', f'./data/{dir}/events.csv')
   true = np.load(f'./data/{dir}/output/true.npy')
   acc = get_acc(true, naive_mean, test_results[dir])
-  # print('naive results:')
-  # pp.pprint(acc['naive'])
-  # mean_pos_err_naive += acc['naive']['pos_loss']['m']
-  # mean_rot_err_naive += acc['naive']['rot_loss']['m']
-  # print('BC results')
-  # pp.pprint(acc['BC'])
+  print('naive results:')
+  pp.pprint(acc['naive'])
+  mean_pos_err_naive += acc['naive']['pos_loss']['m']
+  mean_rot_err_naive += acc['naive']['rot_loss']['m']
+  print('BC results')
+  pp.pprint(acc['BC'])
   mean_pos_err += acc['BC']['pos_loss']['m']
   mean_rot_err += acc['BC']['rot_loss']['m']
   tar_pos_stat, tar_pos_dataset = get_target_stat(f'./data/{dir}')
@@ -81,9 +81,6 @@ for i, dir in enumerate(dir_list):
   after_sd.append(action_stat['position']['std'])
   after_mean_rot.append(action_stat['rotation']['mean'])
   after_sd_rot.append(action_stat['rotation']['std'])
-
-  continue
-
 
   collection_time = get_data_collection_time(f'./data/{dir}/events.csv')/1000
   mean_data_collection_time += collection_time
@@ -189,4 +186,4 @@ camera_before_after = {
   'After Camera Rotation SD': after_sd_rot}
 
 import pandas as pd
-pd.DataFrame(camera_before_after).to_csv('temp.csv')
+pd.DataFrame(camera_before_after).to_csv('camera_before_after.csv')
